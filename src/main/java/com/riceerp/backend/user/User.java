@@ -31,6 +31,9 @@ public class User {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+
     public Long getId() {
         return id;
     }
@@ -69,5 +72,13 @@ public class User {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public String getPasswordHash() {
+    return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 }

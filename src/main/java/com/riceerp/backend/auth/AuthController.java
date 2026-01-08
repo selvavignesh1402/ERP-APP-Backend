@@ -3,6 +3,8 @@ package com.riceerp.backend.auth;
 import com.riceerp.backend.otp.OtpService;
 import com.riceerp.backend.user.User;
 import com.riceerp.backend.user.UserRepository;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import com.riceerp.backend.security.JwtUtil;
 
@@ -16,10 +18,13 @@ public class AuthController {
 
     private final OtpService otpService;
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthController(OtpService otpService, UserRepository userRepository) {
+
+    public AuthController(OtpService otpService, UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.otpService = otpService;
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // -------- SEND OTP --------
@@ -54,6 +59,8 @@ public Map<String, Object> verifyOtp(@RequestBody VerifyOtpRequest request) {
         isNewUser = true;
     }
 
+    
+
     String token = JwtUtil.generateToken(user.getId(), user.getPhoneNumber());
 
     Map<String, Object> response = new HashMap<>();
@@ -65,4 +72,48 @@ public Map<String, Object> verifyOtp(@RequestBody VerifyOtpRequest request) {
 
     return response;
     }
+
+    @PostMapping("/signup-password")
+    public Map<String, Object> signupWithPassword(@RequestBody SignupRequest request) {
+
+        if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+            throw new RuntimeException("Phone number already registered");
+        }
+
+        User user = new User();
+        user.setName(request.getName());
+        user.setPhoneNumber(request.getPhoneNumber());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setProfileCompleted(false);
+        user.setActive(true);
+
+        userRepository.save(user);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Signup successful");
+        response.put("profileCompleted", false);
+
+        return response;
+    }
+
+    @PostMapping("/login-password")
+    public Map<String, Object> loginWithPassword(@RequestBody LoginRequest request) {
+
+        User user = userRepository.findByPhoneNumber(request.getPhoneNumber())
+                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new RuntimeException("Invalid credentials");
+        }
+
+        String token = JwtUtil.generateToken(user.getId(), user.getPhoneNumber());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("token", token);
+        response.put("profileCompleted", user.isProfileCompleted());
+        response.put("userId", user.getId());
+
+        return response;
+    }
+
 }
