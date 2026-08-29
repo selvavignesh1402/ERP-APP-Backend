@@ -8,7 +8,6 @@ import com.riceerp.backend.enums.VisitStatus;
 import com.riceerp.backend.repository.UserRepository;
 import com.riceerp.backend.repository.VisitCheckInRepository;
 import com.riceerp.backend.repository.VisitScheduleRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,12 +17,18 @@ import java.util.List;
 @Service
 public class VisitService {
 
-    @Autowired
-    private VisitScheduleRepository visitScheduleRepo;
-    @Autowired
-    private VisitCheckInRepository visitCheckInRepo;
-    @Autowired
-    private UserRepository userRepo;
+    private final VisitScheduleRepository visitScheduleRepo;
+    private final VisitCheckInRepository visitCheckInRepo;
+    private final UserRepository userRepo;
+
+    public VisitService(
+            VisitScheduleRepository visitScheduleRepo,
+            VisitCheckInRepository visitCheckInRepo,
+            UserRepository userRepo) {
+        this.visitScheduleRepo = visitScheduleRepo;
+        this.visitCheckInRepo = visitCheckInRepo;
+        this.userRepo = userRepo;
+    }
 
     // ─────────────────────────────────────────────
     // CHECK-IN

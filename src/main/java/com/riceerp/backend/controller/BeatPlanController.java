@@ -4,7 +4,6 @@ import com.riceerp.backend.dto.BeatPlanDto;
 import com.riceerp.backend.dto.ManagerDashboardDto;
 import com.riceerp.backend.dto.TodayRouteDto;
 import com.riceerp.backend.service.BeatPlanService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -18,8 +17,11 @@ import java.util.Map;
 @RequestMapping("/beat-plans")
 public class BeatPlanController {
 
-    @Autowired
-    private BeatPlanService beatPlanService;
+    private final BeatPlanService beatPlanService;
+
+    public BeatPlanController(BeatPlanService beatPlanService) {
+        this.beatPlanService = beatPlanService;
+    }
 
     // Manager: Create a beat plan
     @PostMapping

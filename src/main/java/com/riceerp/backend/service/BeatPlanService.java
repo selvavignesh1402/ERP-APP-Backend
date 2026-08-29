@@ -7,7 +7,6 @@ import com.riceerp.backend.entity.*;
 import com.riceerp.backend.enums.Role;
 import com.riceerp.backend.enums.VisitStatus;
 import com.riceerp.backend.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,20 +20,30 @@ import java.util.stream.Collectors;
 @Service
 public class BeatPlanService {
 
-    @Autowired
-    private BeatPlanRepository beatPlanRepo;
-    @Autowired
-    private BeatPlanEntryRepository beatPlanEntryRepo;
-    @Autowired
-    private VisitScheduleRepository visitScheduleRepo;
-    @Autowired
-    private VisitCheckInRepository visitCheckInRepo;
-    @Autowired
-    private UserRepository userRepo;
-    @Autowired
-    private CustomerRepository customerRepo;
-    @Autowired
-    private SaleRepository saleRepo;
+    private final BeatPlanRepository beatPlanRepo;
+    private final BeatPlanEntryRepository beatPlanEntryRepo;
+    private final VisitScheduleRepository visitScheduleRepo;
+    private final VisitCheckInRepository visitCheckInRepo;
+    private final UserRepository userRepo;
+    private final CustomerRepository customerRepo;
+    private final SaleRepository saleRepo;
+
+    public BeatPlanService(
+            BeatPlanRepository beatPlanRepo,
+            BeatPlanEntryRepository beatPlanEntryRepo,
+            VisitScheduleRepository visitScheduleRepo,
+            VisitCheckInRepository visitCheckInRepo,
+            UserRepository userRepo,
+            CustomerRepository customerRepo,
+            SaleRepository saleRepo) {
+        this.beatPlanRepo = beatPlanRepo;
+        this.beatPlanEntryRepo = beatPlanEntryRepo;
+        this.visitScheduleRepo = visitScheduleRepo;
+        this.visitCheckInRepo = visitCheckInRepo;
+        this.userRepo = userRepo;
+        this.customerRepo = customerRepo;
+        this.saleRepo = saleRepo;
+    }
 
     // ─────────────────────────────────────────────
     // CREATE / UPDATE BEAT PLANS

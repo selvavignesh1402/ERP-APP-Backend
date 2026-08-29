@@ -4,7 +4,6 @@ import com.riceerp.backend.dto.CheckInRequestDto;
 import com.riceerp.backend.dto.CheckOutRequestDto;
 import com.riceerp.backend.entity.VisitCheckIn;
 import com.riceerp.backend.service.VisitService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -15,8 +14,11 @@ import java.util.List;
 @RequestMapping("/visits")
 public class VisitController {
 
-    @Autowired
-    private VisitService visitService;
+    private final VisitService visitService;
+
+    public VisitController(VisitService visitService) {
+        this.visitService = visitService;
+    }
 
     // Salesperson: Check-in at a shop
     @PostMapping("/{scheduleId}/check-in")
