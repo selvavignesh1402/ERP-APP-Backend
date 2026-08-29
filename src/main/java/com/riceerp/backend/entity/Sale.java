@@ -18,6 +18,10 @@ public class Sale {
     @Column(name = "customer_name")
     private String customerName;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "customer_id")
+    private Customer customer;
+
     @Column(name = "sale_date", nullable = false)
     private LocalDateTime saleDate = LocalDateTime.now();
 
@@ -69,6 +73,14 @@ public class Sale {
 
     public void setCustomerName(String customerName) {
         this.customerName = customerName;
+    }
+
+    public Customer getCustomer() {
+        return customer;
+    }
+
+    public void setCustomer(Customer customer) {
+        this.customer = customer;
     }
 
     public LocalDateTime getSaleDate() {

@@ -4,34 +4,65 @@ import com.riceerp.backend.dto.PurchaseItemRequest;
 import com.riceerp.backend.dto.PurchaseRequest;
 import com.riceerp.backend.dto.PurchaseReturnRequest;
 import com.riceerp.backend.entity.*;
+import com.riceerp.backend.enums.MovementType;
+import com.riceerp.backend.enums.PurchaseStatus;
 import com.riceerp.backend.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class PurchaseService {
+
+    private static final Map<PurchaseStatus, Set<PurchaseStatus>> TRANSITIONS = new EnumMap<>(PurchaseStatus.class);
+
+    static {
+        TRANSITIONS.put(PurchaseStatus.DRAFT, EnumSet.of(PurchaseStatus.PENDING_APPROVAL, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.PENDING_APPROVAL, EnumSet.of(PurchaseStatus.APPROVED, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.APPROVED, EnumSet.of(PurchaseStatus.ORDERED, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.ORDERED, EnumSet.of(PurchaseStatus.PARTIALLY_RECEIVED, PurchaseStatus.RECEIVED, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.PARTIALLY_RECEIVED, EnumSet.of(PurchaseStatus.RECEIVED, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.RECEIVED, EnumSet.of(PurchaseStatus.COMPLETED, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.COMPLETED, EnumSet.noneOf(PurchaseStatus.class));
+        TRANSITIONS.put(PurchaseStatus.CANCELLED, EnumSet.noneOf(PurchaseStatus.class));
+    }
 
     private final PurchaseRepository purchaseRepository;
     private final PurchaseItemRepository purchaseItemRepository;
     private final PurchaseReturnRepository purchaseReturnRepository;
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
+    private final StockMovementService stockMovementService;
 
     public PurchaseService(
             PurchaseRepository purchaseRepository,
             PurchaseItemRepository purchaseItemRepository,
             PurchaseReturnRepository purchaseReturnRepository,
             SupplierRepository supplierRepository,
-            ProductRepository productRepository) {
+            ProductRepository productRepository,
+            StockMovementService stockMovementService) {
         this.purchaseRepository = purchaseRepository;
         this.purchaseItemRepository = purchaseItemRepository;
         this.purchaseReturnRepository = purchaseReturnRepository;
         this.supplierRepository = supplierRepository;
         this.productRepository = productRepository;
+        this.stockMovementService = stockMovementService;
+    }
+
+    public static boolean canTransition(PurchaseStatus from, PurchaseStatus to) {
+        return TRANSITIONS.getOrDefault(from, Collections.emptySet()).contains(to);
+    }
+
+    private void assertTransition(Purchase purchase, PurchaseStatus target) {
+        if (purchase.getStatus() == target) {
+            throw new RuntimeException("Purchase is already in status: " + target);
+        }
+        if (!canTransition(purchase.getStatus(), target)) {
+            throw new RuntimeException("Invalid status transition from " + purchase.getStatus()
+                    + " to " + target);
+        }
     }
 
     @Transactional
@@ -42,7 +73,7 @@ public class PurchaseService {
         Purchase purchase = new Purchase();
         purchase.setSupplier(supplier);
         purchase.setInvoiceNumber(request.getInvoiceNumber());
-        purchase.setStatus(request.getStatus() != null ? request.getStatus() : "RECEIVED");
+        purchase.setStatus(request.getStatus() != null ? request.getStatus() : PurchaseStatus.DRAFT);
         purchase.setPurchaseDate(LocalDateTime.now());
 
         // Save initial empty total to generate ID
@@ -63,15 +94,39 @@ public class PurchaseService {
             item.setPrice(itemReq.getPrice());
             purchaseItemRepository.save(item);
 
-            // Increment Stock
-            product.setStock(product.getStock() + itemReq.getQuantity());
-            productRepository.save(product);
-
             totalAmount += (itemReq.getQuantity() * itemReq.getPrice());
         }
 
         savedPurchase.setTotalAmount(totalAmount);
         return purchaseRepository.save(savedPurchase);
+    }
+
+    @Transactional
+    public Purchase updateStatus(Long id, PurchaseStatus target) {
+        Purchase purchase = getPurchaseById(id);
+        assertTransition(purchase, target);
+        purchase.setStatus(target);
+        return purchaseRepository.save(purchase);
+    }
+
+    @Transactional
+    public Purchase submit(Long id) {
+        return updateStatus(id, PurchaseStatus.PENDING_APPROVAL);
+    }
+
+    @Transactional
+    public Purchase approve(Long id) {
+        return updateStatus(id, PurchaseStatus.APPROVED);
+    }
+
+    @Transactional
+    public Purchase order(Long id) {
+        return updateStatus(id, PurchaseStatus.ORDERED);
+    }
+
+    @Transactional
+    public Purchase cancel(Long id) {
+        return updateStatus(id, PurchaseStatus.CANCELLED);
     }
 
     @Transactional
@@ -85,6 +140,9 @@ public class PurchaseService {
         // Subtract Stock
         product.setStock(product.getStock() - request.getQuantityReturned());
         productRepository.save(product);
+
+        // Stock movement ledger
+        stockMovementService.record(product, MovementType.RETURN, -request.getQuantityReturned(), purchaseId);
 
         PurchaseReturn pReturn = new PurchaseReturn();
         pReturn.setPurchase(purchase);

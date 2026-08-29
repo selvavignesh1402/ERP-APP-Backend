@@ -44,7 +44,12 @@ public class JwtFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                String roleName = JwtUtil.extractRole(token);
+                if (!user.isActive()) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    return;
+                }
+
+                String roleName = user.getRole() != null ? user.getRole().name() : "SALES";
                 List<SimpleGrantedAuthority> authorities = Collections.singletonList(
                         new SimpleGrantedAuthority("ROLE_" + (roleName != null ? roleName : "SALES"))
                 );

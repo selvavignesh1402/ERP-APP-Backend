@@ -4,9 +4,18 @@ import java.util.List;
 
 public class SaleRequest {
     private String customerName;
+    private Long customerId;
     private String paymentMode;
     private double discount;
     private List<SaleItemRequest> items;
+
+    public Long getCustomerId() {
+        return customerId;
+    }
+
+    public void setCustomerId(Long customerId) {
+        this.customerId = customerId;
+    }
 
     public String getCustomerName() {
         return customerName;

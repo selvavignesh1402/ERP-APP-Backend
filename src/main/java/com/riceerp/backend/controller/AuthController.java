@@ -9,6 +9,7 @@ import com.riceerp.backend.entity.User;
 import com.riceerp.backend.repository.UserRepository;
 import com.riceerp.backend.security.JwtUtil;
 import com.riceerp.backend.service.OtpService;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -81,6 +82,10 @@ public class AuthController {
             throw new RuntimeException("Phone number already registered");
         }
 
+        if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
+            throw new RuntimeException("Password must be at least 6 characters long");
+        }
+
         User user = new User();
         user.setName(request.getName());
         user.setPhoneNumber(request.getPhoneNumber());
@@ -108,6 +113,10 @@ public class AuthController {
             throw new RuntimeException("Invalid credentials");
         }
 
+        if (!user.isActive()) {
+            throw new RuntimeException("Account has been deactivated. Contact your administrator.");
+        }
+
         String roleName = user.getRole() != null ? user.getRole().name() : Role.SALES.name();
         String token = JwtUtil.generateToken(user.getId(), user.getPhoneNumber(), roleName);
 
@@ -116,6 +125,33 @@ public class AuthController {
         response.put("profileCompleted", user.isProfileCompleted());
         response.put("userId", user.getId());
         response.put("role", roleName);
+
+        return response;
+    }
+
+    // -------- CURRENT USER --------
+    @GetMapping("/me")
+    public Map<String, Object> me(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+
+        Long userId;
+        try {
+            userId = Long.parseLong(authentication.getPrincipal().toString());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Invalid authentication principal");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", user.getId());
+        response.put("name", user.getName());
+        response.put("phoneNumber", user.getPhoneNumber());
+        response.put("role", user.getRole() != null ? user.getRole().name() : Role.SALES.name());
+        response.put("profileCompleted", user.isProfileCompleted());
 
         return response;
     }

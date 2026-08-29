@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import com.riceerp.backend.enums.PurchaseStatus;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -24,8 +25,9 @@ public class Purchase {
     @Column(name = "total_amount", nullable = false)
     private double totalAmount;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status = "RECEIVED";
+    private PurchaseStatus status = PurchaseStatus.DRAFT;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -70,11 +72,11 @@ public class Purchase {
         this.totalAmount = totalAmount;
     }
 
-    public String getStatus() {
+    public PurchaseStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(PurchaseStatus status) {
         this.status = status;
     }
 

@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
@@ -12,6 +13,7 @@ public class PurchaseItem {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "purchase_id", nullable = false)
+    @JsonIgnore
     private Purchase purchase;
 
     @ManyToOne(fetch = FetchType.EAGER)

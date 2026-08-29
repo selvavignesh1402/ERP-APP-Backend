@@ -1,11 +1,13 @@
 package com.riceerp.backend.dto;
 
+import com.riceerp.backend.enums.PurchaseStatus;
+
 import java.util.List;
 
 public class PurchaseRequest {
     private Long supplierId;
     private String invoiceNumber;
-    private String status;
+    private PurchaseStatus status;
     private List<PurchaseItemRequest> items;
 
     public Long getSupplierId() {
@@ -24,11 +26,11 @@ public class PurchaseRequest {
         this.invoiceNumber = invoiceNumber;
     }
 
-    public String getStatus() {
+    public PurchaseStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(PurchaseStatus status) {
         this.status = status;
     }
 
