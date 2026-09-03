@@ -19,6 +19,8 @@ class AuthControllerTest {
 
     private OtpService otpService;
     private UserRepository userRepository;
+    private com.riceerp.backend.repository.OrganizationMembershipRepository membershipRepository;
+    private com.riceerp.backend.repository.OrganizationRepository organizationRepository;
     private PasswordEncoder passwordEncoder;
     private AuthController authController;
 
@@ -26,8 +28,10 @@ class AuthControllerTest {
     void setUp() {
         otpService = mock(OtpService.class);
         userRepository = mock(UserRepository.class);
+        membershipRepository = mock(com.riceerp.backend.repository.OrganizationMembershipRepository.class);
+        organizationRepository = mock(com.riceerp.backend.repository.OrganizationRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        authController = new AuthController(otpService, userRepository, passwordEncoder);
+        authController = new AuthController(otpService, userRepository, membershipRepository, organizationRepository, passwordEncoder);
     }
 
     @Test

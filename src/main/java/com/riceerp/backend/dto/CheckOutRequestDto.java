@@ -1,9 +1,12 @@
 package com.riceerp.backend.dto;
 
 import com.riceerp.backend.enums.VisitOutcome;
+import jakarta.validation.constraints.NotNull;
 
 public class CheckOutRequestDto {
+    @NotNull(message = "Visit outcome is required")
     private VisitOutcome outcome;
+
     private String notes;
     private Long saleId;
     private Long paymentId;

@@ -1,11 +1,17 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 @Entity
 @Table(name = "sales_items")
 public class SaleItem {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -66,4 +72,13 @@ public class SaleItem {
     public void setPrice(double price) {
         this.price = price;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

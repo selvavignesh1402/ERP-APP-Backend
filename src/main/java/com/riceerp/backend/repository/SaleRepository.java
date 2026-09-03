@@ -22,4 +22,6 @@ public interface SaleRepository extends JpaRepository<Sale, Long> {
     double sumGrandTotalByPaymentMode(@Param("mode") PaymentMode mode);
 
     List<Sale> findTop5ByOrderBySaleDateDesc();
+
+    java.util.Optional<Sale> findByClientReferenceId(String clientReferenceId);
 }

@@ -3,6 +3,7 @@ package com.riceerp.backend.controller;
 import com.riceerp.backend.dto.PaymentRequest;
 import com.riceerp.backend.entity.Payment;
 import com.riceerp.backend.service.PaymentService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,7 +19,7 @@ public class PaymentController {
     }
 
     @PostMapping
-    public Payment createPayment(@RequestBody PaymentRequest request) {
+    public Payment createPayment(@Valid @RequestBody PaymentRequest request) {
         return paymentService.createPayment(request);
     }
 

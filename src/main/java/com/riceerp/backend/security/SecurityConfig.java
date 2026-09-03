@@ -35,22 +35,28 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/me").authenticated()
-                        .requestMatchers("/auth/**", "/h2-console/**", "/error").permitAll()
-                        .requestMatchers("/users/**").hasRole("ADMIN")
+                        // Only exact public auth endpoints — any new /auth/* endpoint
+                        // added later must be authenticated by default, never public.
+                        .requestMatchers("/auth/login-password", "/auth/signup-password",
+                                "/auth/send-otp", "/auth/verify-otp", "/auth/firebase-login", "/error").permitAll()
+                        .requestMatchers("/users/**").hasAnyRole("MASTER_ADMIN", "ADMIN")
+                        .requestMatchers("/api/organizations/**").hasAnyRole("MASTER_ADMIN", "ADMIN")
+                        .requestMatchers("/api/master-admin/**").hasRole("MASTER_ADMIN")
                         .requestMatchers("/dashboard/**")
-                        .hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE")
-                        .requestMatchers("/customers/**").hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT", "SALES")
-                        .requestMatchers("/payments/**").hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT")
-                        .requestMatchers("/sales/**").hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT", "SALES")
-                        .requestMatchers("/purchases/**").hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT", "WAREHOUSE")
+                        .hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE", "DELIVERY")
+                        .requestMatchers("/customers/**").hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE", "DELIVERY")
+                        .requestMatchers("/payments/**").hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "DELIVERY")
+                        .requestMatchers("/sales/**").hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE", "DELIVERY")
+                        .requestMatchers("/api/sales-orders/**").hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE", "DELIVERY")
+                        .requestMatchers("/api/deliveries/**").hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE", "DELIVERY")
+                        .requestMatchers("/purchases/**").hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "WAREHOUSE")
                         .requestMatchers("/products/**")
-                        .hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE")
+                        .hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE", "DELIVERY")
                         .requestMatchers("/suppliers/**")
-                        .hasAnyRole("ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE")
+                        .hasAnyRole("MASTER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT", "SALES", "WAREHOUSE")
                         .anyRequest().authenticated())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new JwtFilter(userRepository), UsernamePasswordAuthenticationFilter.class)
-                .headers(headers -> headers.frameOptions(frame -> frame.disable()))
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable);
 

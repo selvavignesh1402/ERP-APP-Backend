@@ -3,8 +3,10 @@ package com.riceerp.backend.controller;
 import com.riceerp.backend.dto.UpdateProfileRequest;
 import com.riceerp.backend.entity.User;
 import com.riceerp.backend.entity.UserProfile;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.UserProfileRepository;
 import com.riceerp.backend.repository.UserRepository;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -23,19 +25,25 @@ public class ProfileController {
         this.userRepository = userRepository;
     }
 
-    @GetMapping("/{userId}")
-    public UserProfile getProfile(@PathVariable Long userId) {
+    // The authenticated user manages their own profile only.
+    // The user id always comes from the JWT principal — never from the request path.
+
+    @GetMapping
+    public UserProfile getProfile(Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
         return profileRepository.findById(userId)
                 .orElse(null);
     }
 
-    @PutMapping("/{userId}")
+    @PutMapping
     public Map<String, String> updateProfile(
-            @PathVariable Long userId,
+            Authentication authentication,
             @RequestBody UpdateProfileRequest request) {
 
+        Long userId = getCurrentUserId(authentication);
+
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new NotFoundException("User not found"));
 
         UserProfile profile = profileRepository.findById(userId)
                 .orElse(new UserProfile());
@@ -54,5 +62,17 @@ public class ProfileController {
         Map<String, String> response = new HashMap<>();
         response.put("message", "Profile completed successfully");
         return response;
+    }
+
+    private Long getCurrentUserId(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            throw new RuntimeException("Not authenticated");
+        }
+        // JwtFilter stores the user id (Long) as the authentication principal
+        try {
+            return Long.parseLong(authentication.getPrincipal().toString());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Cannot resolve user id from authentication");
+        }
     }
 }

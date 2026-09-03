@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PriceType;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -7,6 +8,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "price_history")
 public class PriceHistory {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -75,4 +81,13 @@ public class PriceHistory {
     public void setEffectiveFrom(LocalDateTime effectiveFrom) {
         this.effectiveFrom = effectiveFrom;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

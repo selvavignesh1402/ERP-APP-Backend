@@ -4,7 +4,7 @@ import com.riceerp.backend.dto.BeatPlanDto;
 import com.riceerp.backend.dto.ManagerDashboardDto;
 import com.riceerp.backend.dto.TodayRouteDto;
 import com.riceerp.backend.entity.*;
-import com.riceerp.backend.enums.Role;
+import com.riceerp.backend.enums.PlatformRole;
 import com.riceerp.backend.enums.VisitStatus;
 import com.riceerp.backend.repository.*;
 import org.springframework.stereotype.Service;
@@ -27,6 +27,7 @@ public class BeatPlanService {
     private final UserRepository userRepo;
     private final CustomerRepository customerRepo;
     private final SaleRepository saleRepo;
+    private final PaymentRepository paymentRepo;
 
     public BeatPlanService(
             BeatPlanRepository beatPlanRepo,
@@ -35,7 +36,8 @@ public class BeatPlanService {
             VisitCheckInRepository visitCheckInRepo,
             UserRepository userRepo,
             CustomerRepository customerRepo,
-            SaleRepository saleRepo) {
+            SaleRepository saleRepo,
+            PaymentRepository paymentRepo) {
         this.beatPlanRepo = beatPlanRepo;
         this.beatPlanEntryRepo = beatPlanEntryRepo;
         this.visitScheduleRepo = visitScheduleRepo;
@@ -43,6 +45,7 @@ public class BeatPlanService {
         this.userRepo = userRepo;
         this.customerRepo = customerRepo;
         this.saleRepo = saleRepo;
+        this.paymentRepo = paymentRepo;
     }
 
     // ─────────────────────────────────────────────
@@ -72,6 +75,10 @@ public class BeatPlanService {
                 beatPlanEntryRepo.save(entry);
             }
         }
+        // Sync schedules for the current week immediately
+        LocalDate monday = LocalDate.now().with(DayOfWeek.MONDAY);
+        generateWeeklySchedules(monday);
+        ensureSchedulesForDate(plan.getSalesperson().getId(), LocalDate.now());
         return toDto(plan);
     }
 
@@ -97,6 +104,10 @@ public class BeatPlanService {
             }
         }
         beatPlanRepo.save(plan);
+        // Sync schedules for the current week immediately
+        LocalDate monday = LocalDate.now().with(DayOfWeek.MONDAY);
+        generateWeeklySchedules(monday);
+        ensureSchedulesForDate(plan.getSalesperson().getId(), LocalDate.now());
         return toDto(plan);
     }
 
@@ -118,8 +129,48 @@ public class BeatPlanService {
     }
 
     // ─────────────────────────────────────────────
-    // GENERATE WEEKLY SCHEDULES
+    // GENERATE WEEKLY SCHEDULES & AUTO-ENSURE
     // ─────────────────────────────────────────────
+
+    @Transactional
+    public void ensureSchedulesForDate(Long salespersonId, LocalDate date) {
+        DayOfWeek targetDay = date.getDayOfWeek();
+        List<BeatPlan> plans;
+        if (salespersonId != null) {
+            plans = beatPlanRepo.findBySalespersonId(salespersonId).stream()
+                    .filter(BeatPlan::isActive)
+                    .collect(Collectors.toList());
+            // If no active plans assigned specifically to this salespersonId,
+            // check if there are active plans in the system (e.g. for Admin user)
+            if (plans.isEmpty()) {
+                User user = userRepo.findById(salespersonId).orElse(null);
+                if (user != null && (user.getPlatformRole() == PlatformRole.MASTER_ADMIN)) {
+                    plans = beatPlanRepo.findByIsActiveTrue();
+                }
+            }
+        } else {
+            plans = beatPlanRepo.findByIsActiveTrue();
+        }
+
+        for (BeatPlan plan : plans) {
+            List<BeatPlanEntry> entries = beatPlanEntryRepo.findByBeatPlanId(plan.getId());
+            for (BeatPlanEntry entry : entries) {
+                if (entry.getDayOfWeek() == targetDay) {
+                    if (!visitScheduleRepo.existsByBeatPlanIdAndCustomerIdAndScheduledDate(
+                            plan.getId(), entry.getCustomer().getId(), date)) {
+                        VisitSchedule schedule = new VisitSchedule();
+                        schedule.setBeatPlan(plan);
+                        schedule.setSalesperson(plan.getSalesperson());
+                        schedule.setCustomer(entry.getCustomer());
+                        schedule.setScheduledDate(date);
+                        schedule.setVisitOrder(entry.getVisitOrder());
+                        schedule.setStatus(VisitStatus.PENDING);
+                        visitScheduleRepo.save(schedule);
+                    }
+                }
+            }
+        }
+    }
 
     @Transactional
     public int generateWeeklySchedules(LocalDate weekStart) {
@@ -135,8 +186,9 @@ public class BeatPlanService {
                 while (visitDate.getDayOfWeek() != entry.getDayOfWeek()) {
                     visitDate = visitDate.plusDays(1);
                 }
-                // Idempotent — skip if already scheduled
-                if (!visitScheduleRepo.existsByBeatPlanIdAndScheduledDate(plan.getId(), visitDate)) {
+                // Idempotent — skip if already scheduled for this customer on this date
+                if (!visitScheduleRepo.existsByBeatPlanIdAndCustomerIdAndScheduledDate(
+                        plan.getId(), entry.getCustomer().getId(), visitDate)) {
                     VisitSchedule schedule = new VisitSchedule();
                     schedule.setBeatPlan(plan);
                     schedule.setSalesperson(plan.getSalesperson());
@@ -156,10 +208,21 @@ public class BeatPlanService {
     // TODAY'S ROUTE — for salesperson
     // ─────────────────────────────────────────────
 
+    @Transactional
     public List<TodayRouteDto> getTodayRoute(Long salespersonId) {
         LocalDate today = LocalDate.now();
+        ensureSchedulesForDate(salespersonId, today);
+
         List<VisitSchedule> schedules = visitScheduleRepo
                 .findBySalespersonIdAndScheduledDateOrderByVisitOrderAsc(salespersonId, today);
+
+        // Fallback: If salesperson has no personal schedules, but is Admin/Manager, load all schedules for today
+        if (schedules.isEmpty()) {
+            User user = userRepo.findById(salespersonId).orElse(null);
+            if (user != null && (user.getPlatformRole() == PlatformRole.MASTER_ADMIN)) {
+                schedules = visitScheduleRepo.findAllForDate(today);
+            }
+        }
 
         return schedules.stream().map(s -> {
             TodayRouteDto dto = new TodayRouteDto();
@@ -235,7 +298,16 @@ public class BeatPlanService {
                     .mapToDouble(ci -> saleRepo.findById(ci.getSaleId()).map(Sale::getGrandTotal).orElse(0.0))
                     .sum();
             summary.setTotalOrders(totalOrders);
-            summary.setTotalCollections(0.0); // Payment repo query can be added here
+
+            // Collections = payments recorded against today's check-ins
+            List<Long> paymentIds = checkIns.stream()
+                    .map(VisitCheckIn::getPaymentId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            double totalCollections = paymentIds.isEmpty()
+                    ? 0.0
+                    : paymentRepo.sumAmountByIdIn(paymentIds);
+            summary.setTotalCollections(totalCollections);
 
             team.add(summary);
 

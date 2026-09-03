@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.DayOfWeek;
@@ -7,6 +8,11 @@ import java.time.DayOfWeek;
 @Entity
 @Table(name = "beat_plan_entries")
 public class BeatPlanEntry {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,4 +74,13 @@ public class BeatPlanEntry {
     public void setVisitOrder(int visitOrder) {
         this.visitOrder = visitOrder;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

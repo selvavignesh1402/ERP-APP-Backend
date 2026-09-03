@@ -4,6 +4,7 @@ import com.riceerp.backend.dto.SupplierInvoiceRequest;
 import com.riceerp.backend.entity.SupplierInvoice;
 import com.riceerp.backend.entity.SupplierInvoiceItem;
 import com.riceerp.backend.service.SupplierInvoiceService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,7 +20,7 @@ public class SupplierInvoiceController {
     }
 
     @PostMapping
-    public SupplierInvoice createInvoice(@RequestBody SupplierInvoiceRequest request) {
+    public SupplierInvoice createInvoice(@Valid @RequestBody SupplierInvoiceRequest request) {
         return invoiceService.createInvoice(request);
     }
 

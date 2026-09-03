@@ -1,9 +1,20 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
 public class PaymentRequest {
+    @NotNull(message = "Reference type is required")
     private String referenceType;
+
+    @NotNull(message = "Reference id is required")
     private Long referenceId;
+
+    @NotNull(message = "Amount is required")
+    @Positive(message = "Payment amount must be greater than zero")
     private double amount;
+
+    @NotNull(message = "Payment mode is required")
     private String paymentMode;
 
     public String getReferenceType() {

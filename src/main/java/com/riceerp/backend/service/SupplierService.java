@@ -3,6 +3,7 @@ package com.riceerp.backend.service;
 import com.riceerp.backend.dto.SupplierRequest;
 import com.riceerp.backend.entity.Supplier;
 import com.riceerp.backend.enums.Status;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.SupplierRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,7 +60,7 @@ public class SupplierService {
 
     public Supplier getSupplierById(Long id) {
         return supplierRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Supplier not found with id: " + id));
     }
 
     @Transactional

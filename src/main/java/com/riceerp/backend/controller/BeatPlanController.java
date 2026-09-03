@@ -4,6 +4,7 @@ import com.riceerp.backend.dto.BeatPlanDto;
 import com.riceerp.backend.dto.ManagerDashboardDto;
 import com.riceerp.backend.dto.TodayRouteDto;
 import com.riceerp.backend.service.BeatPlanService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -25,7 +26,7 @@ public class BeatPlanController {
 
     // Manager: Create a beat plan
     @PostMapping
-    public ResponseEntity<BeatPlanDto> createBeatPlan(@RequestBody BeatPlanDto dto) {
+    public ResponseEntity<BeatPlanDto> createBeatPlan(@Valid @RequestBody BeatPlanDto dto) {
         return ResponseEntity.ok(beatPlanService.createBeatPlan(dto));
     }
 
@@ -43,7 +44,7 @@ public class BeatPlanController {
 
     // Manager: Update a beat plan
     @PutMapping("/{id}")
-    public ResponseEntity<BeatPlanDto> updateBeatPlan(@PathVariable Long id, @RequestBody BeatPlanDto dto) {
+    public ResponseEntity<BeatPlanDto> updateBeatPlan(@PathVariable Long id, @Valid @RequestBody BeatPlanDto dto) {
         return ResponseEntity.ok(beatPlanService.updateBeatPlan(id, dto));
     }
 
@@ -91,17 +92,11 @@ public class BeatPlanController {
         if (auth == null || auth.getPrincipal() == null) {
             throw new RuntimeException("Not authenticated");
         }
-        // Integrate with your existing UserDetailsService that stores the User entity
-        // The pattern below works with Spring UserDetails where username = phone number
-        // Replace with your actual implementation if different
-        Object principal = auth.getPrincipal();
-        if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
-            // Look up by phone — adjust to match your existing auth pattern
-            try {
-                return Long.parseLong(ud.getUsername());
-            } catch (NumberFormatException ignored) {
-            }
+        // JwtFilter stores the user id (Long) as the authentication principal
+        try {
+            return Long.parseLong(auth.getPrincipal().toString());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Cannot resolve user id from authentication");
         }
-        throw new RuntimeException("Cannot resolve user id from authentication");
     }
 }

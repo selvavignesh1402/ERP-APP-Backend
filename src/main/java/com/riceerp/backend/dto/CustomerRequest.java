@@ -1,12 +1,21 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.PositiveOrZero;
+
 public class CustomerRequest {
 
+    @NotBlank(message = "Customer name is required")
     private String customerName;
+
+    @NotBlank(message = "Phone is required")
     private String phone;
+
     private String email;
     private String address;
     private String gstNumber;
+
+    @PositiveOrZero(message = "Credit limit must be zero or greater")
     private double creditLimit;
 
     public String getCustomerName() {

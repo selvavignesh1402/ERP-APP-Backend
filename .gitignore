@@ -31,3 +31,53 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Logs ###
+logs/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+### Local secrets & environment files — never commit credentials ###
+.env
+.env.*
+.env.local
+application-local.properties
+application-secret.properties
+application-prod.properties
+application-private.properties
+application-*.local.properties
+application-local.yml
+application-secret.yml
+application-prod.yml
+application-*.local.yml
+
+### Firebase & Cloud Service Account Keys ###
+*firebase-adminsdk*.json
+*service-account*.json
+serviceAccountKey.json
+firebase-service-account.json
+google-services.json
+credentials.json
+secrets.json
+src/main/resources/*service-account*.json
+src/main/resources/*firebase-adminsdk*.json
+src/main/resources/firebase-service-account.json
+src/main/resources/serviceAccountKey.json
+
+### Keystores, Certificates & Private Keys ###
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+*.cer
+*.crt
+*.der
+
+### Database Dumps & OS Artifacts ###
+*.dump
+*.sql.gz
+.DS_Store
+Thumbs.db

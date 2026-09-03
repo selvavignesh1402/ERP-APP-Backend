@@ -1,11 +1,17 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "goods_receipts")
 public class GoodsReceipt {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -63,4 +69,13 @@ public class GoodsReceipt {
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.ReconciliationStatus;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -7,6 +8,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "reconciliation_results")
 public class ReconciliationResult {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -110,4 +116,13 @@ public class ReconciliationResult {
     public void setReconciledAt(LocalDateTime reconciledAt) {
         this.reconciledAt = reconciledAt;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

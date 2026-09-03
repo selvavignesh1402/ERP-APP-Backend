@@ -1,6 +1,6 @@
 package com.riceerp.backend.enums;
 
-public enum Role {
+public enum OrgRole {
     ADMIN,
     MANAGER,
     ACCOUNTANT,

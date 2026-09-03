@@ -3,7 +3,9 @@ package com.riceerp.backend.service;
 import com.riceerp.backend.entity.Sale;
 import com.riceerp.backend.enums.PaymentMode;
 import com.riceerp.backend.enums.Status;
+import com.riceerp.backend.repository.CustomerRepository;
 import com.riceerp.backend.repository.ProductRepository;
+import com.riceerp.backend.repository.PurchaseRepository;
 import com.riceerp.backend.repository.SaleItemRepository;
 import com.riceerp.backend.repository.SaleRepository;
 import com.riceerp.backend.repository.SupplierRepository;
@@ -24,15 +26,21 @@ public class DashboardService {
     private final SaleRepository saleRepository;
     private final SaleItemRepository saleItemRepository;
     private final SupplierRepository supplierRepository;
+    private final CustomerRepository customerRepository;
+    private final PurchaseRepository purchaseRepository;
 
     public DashboardService(ProductRepository productRepository,
             SaleRepository saleRepository,
             SaleItemRepository saleItemRepository,
-            SupplierRepository supplierRepository) {
+            SupplierRepository supplierRepository,
+            CustomerRepository customerRepository,
+            PurchaseRepository purchaseRepository) {
         this.productRepository = productRepository;
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
         this.supplierRepository = supplierRepository;
+        this.customerRepository = customerRepository;
+        this.purchaseRepository = purchaseRepository;
     }
 
     public Map<String, Object> getDashboardMetrics() {
@@ -49,8 +57,11 @@ public class DashboardService {
         metrics.put("todaySalesKg", saleItemRepository.sumQuantityBySaleDateBetween(startOfDay, endOfDay));
         metrics.put("todayRevenue", saleRepository.sumGrandTotalBySaleDateBetween(startOfDay, endOfDay));
 
-        // Credit pending
-        metrics.put("pendingCredit", saleRepository.sumGrandTotalByPaymentMode(PaymentMode.CREDIT));
+        // Today's purchase total
+        metrics.put("todayPurchase", purchaseRepository.sumTotalAmountByPurchaseDateBetween(startOfDay, endOfDay));
+
+        // Credit pending = sum of active customers' outstanding credit balance (the ledger)
+        metrics.put("pendingCredit", customerRepository.sumActiveCreditBalance());
 
         // Supplier count
         metrics.put("activeSuppliers", supplierRepository.countByStatus(Status.ACTIVE));

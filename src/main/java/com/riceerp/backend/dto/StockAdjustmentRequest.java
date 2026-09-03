@@ -1,8 +1,16 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
 public class StockAdjustmentRequest {
+    @NotNull(message = "Product is required")
     private Long productId;
+
+    @NotNull(message = "Quantity change is required")
     private double quantityChange;
+
+    @NotBlank(message = "Reason is required")
     private String reason;
 
     public Long getProductId() {

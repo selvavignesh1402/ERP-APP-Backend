@@ -21,6 +21,8 @@ public interface VisitScheduleRepository extends JpaRepository<VisitSchedule, Lo
 
     boolean existsByBeatPlanIdAndScheduledDate(Long beatPlanId, LocalDate date);
 
+    boolean existsByBeatPlanIdAndCustomerIdAndScheduledDate(Long beatPlanId, Long customerId, LocalDate date);
+
     @Query("SELECT vs FROM VisitSchedule vs WHERE vs.scheduledDate = :date ORDER BY vs.salesperson.name, vs.visitOrder")
     List<VisitSchedule> findAllForDate(@Param("date") LocalDate date);
 

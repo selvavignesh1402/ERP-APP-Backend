@@ -6,6 +6,8 @@ import com.riceerp.backend.dto.PurchaseReturnRequest;
 import com.riceerp.backend.entity.*;
 import com.riceerp.backend.enums.MovementType;
 import com.riceerp.backend.enums.PurchaseStatus;
+import com.riceerp.backend.exception.BusinessRuleException;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,10 +59,10 @@ public class PurchaseService {
 
     private void assertTransition(Purchase purchase, PurchaseStatus target) {
         if (purchase.getStatus() == target) {
-            throw new RuntimeException("Purchase is already in status: " + target);
+            throw new BusinessRuleException("Purchase is already in status: " + target);
         }
         if (!canTransition(purchase.getStatus(), target)) {
-            throw new RuntimeException("Invalid status transition from " + purchase.getStatus()
+            throw new BusinessRuleException("Invalid status transition from " + purchase.getStatus()
                     + " to " + target);
         }
     }
@@ -68,7 +70,7 @@ public class PurchaseService {
     @Transactional
     public Purchase createPurchase(PurchaseRequest request) {
         Supplier supplier = supplierRepository.findById(request.getSupplierId())
-                .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + request.getSupplierId()));
+                .orElseThrow(() -> new NotFoundException("Supplier not found with id: " + request.getSupplierId()));
 
         Purchase purchase = new Purchase();
         purchase.setSupplier(supplier);
@@ -85,7 +87,7 @@ public class PurchaseService {
 
         for (PurchaseItemRequest itemReq : request.getItems()) {
             Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found with id: " + itemReq.getProductId()));
+                    .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
 
             PurchaseItem item = new PurchaseItem();
             item.setPurchase(savedPurchase);
@@ -132,10 +134,17 @@ public class PurchaseService {
     @Transactional
     public PurchaseReturn createPurchaseReturn(Long purchaseId, PurchaseReturnRequest request) {
         Purchase purchase = purchaseRepository.findById(purchaseId)
-                .orElseThrow(() -> new RuntimeException("Purchase not found with id: " + purchaseId));
+                .orElseThrow(() -> new NotFoundException("Purchase not found with id: " + purchaseId));
 
         Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + request.getProductId()));
+                .orElseThrow(() -> new NotFoundException("Product not found with id: " + request.getProductId()));
+
+        // Never drive stock negative via a purchase return.
+        if (product.getStock() < request.getQuantityReturned()) {
+            throw new BusinessRuleException("Cannot return more than available stock for product: "
+                    + product.getProductName() + " (Available: " + product.getStock()
+                    + ", Requested: " + request.getQuantityReturned() + ")");
+        }
 
         // Subtract Stock
         product.setStock(product.getStock() - request.getQuantityReturned());
@@ -156,7 +165,7 @@ public class PurchaseService {
 
     public Purchase getPurchaseById(Long id) {
         return purchaseRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Purchase not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Purchase not found with id: " + id));
     }
 
     public List<Purchase> listPurchases(Long supplierId, String invoice) {

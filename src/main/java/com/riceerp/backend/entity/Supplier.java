@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.Status;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -7,6 +8,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "suppliers")
 public class Supplier {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -119,4 +125,13 @@ public class Supplier {
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

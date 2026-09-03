@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
@@ -7,6 +8,11 @@ import jakarta.persistence.*;
 @Table(name = "supplier_products",
         uniqueConstraints = @UniqueConstraint(columnNames = {"supplier_id", "product_id"}))
 public class SupplierProduct {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -77,4 +83,13 @@ public class SupplierProduct {
     public void setMinOrderQty(double minOrderQty) {
         this.minOrderQty = minOrderQty;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

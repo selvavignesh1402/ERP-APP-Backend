@@ -6,6 +6,7 @@ import com.riceerp.backend.entity.PriceHistory;
 import com.riceerp.backend.entity.Product;
 import com.riceerp.backend.service.ProductService;
 import com.riceerp.backend.service.SupplierProductService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -22,12 +23,12 @@ public class ProductController {
     }
 
     @PostMapping
-    public Product createProduct(@RequestBody ProductRequest request) {
+    public Product createProduct(@Valid @RequestBody ProductRequest request) {
         return productService.createProduct(request);
     }
 
     @PutMapping("/{id}")
-    public Product updateProduct(@PathVariable Long id, @RequestBody ProductRequest request) {
+    public Product updateProduct(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
         return productService.updateProduct(id, request);
     }
 

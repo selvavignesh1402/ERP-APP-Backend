@@ -4,6 +4,7 @@ import com.riceerp.backend.dto.GoodsReceiptRequest;
 import com.riceerp.backend.entity.GoodsReceipt;
 import com.riceerp.backend.entity.GoodsReceiptItem;
 import com.riceerp.backend.service.GoodsReceiptService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,7 +20,7 @@ public class GoodsReceiptController {
     }
 
     @PostMapping("/{id}/receipts")
-    public GoodsReceipt createReceipt(@PathVariable Long id, @RequestBody GoodsReceiptRequest request) {
+    public GoodsReceipt createReceipt(@PathVariable Long id, @Valid @RequestBody GoodsReceiptRequest request) {
         return goodsReceiptService.createReceipt(id, request);
     }
 

@@ -3,6 +3,7 @@ package com.riceerp.backend.controller;
 import com.riceerp.backend.dto.CustomerRequest;
 import com.riceerp.backend.entity.Customer;
 import com.riceerp.backend.service.CustomerService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,7 +20,7 @@ public class CustomerController {
     }
 
     @PostMapping
-    public Customer createCustomer(@RequestBody CustomerRequest request) {
+    public Customer createCustomer(@Valid @RequestBody CustomerRequest request) {
         return customerService.createCustomer(request);
     }
 
@@ -34,7 +35,7 @@ public class CustomerController {
     }
 
     @PutMapping("/{id}")
-    public Customer updateCustomer(@PathVariable Long id, @RequestBody CustomerRequest request) {
+    public Customer updateCustomer(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
         return customerService.updateCustomer(id, request);
     }
 

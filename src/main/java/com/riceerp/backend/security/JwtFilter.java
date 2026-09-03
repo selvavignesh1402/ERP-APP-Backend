@@ -49,9 +49,12 @@ public class JwtFilter extends OncePerRequestFilter {
                     return;
                 }
 
-                String roleName = user.getRole() != null ? user.getRole().name() : "SALES";
+                String roleName = JwtUtil.extractRole(token);
+                if (roleName == null || roleName.trim().isEmpty() || "USER".equals(roleName)) {
+                    roleName = user.getPlatformRole() != null ? user.getPlatformRole().name() : "USER";
+                }
                 List<SimpleGrantedAuthority> authorities = Collections.singletonList(
-                        new SimpleGrantedAuthority("ROLE_" + (roleName != null ? roleName : "SALES"))
+                        new SimpleGrantedAuthority("ROLE_" + roleName)
                 );
 
                 UsernamePasswordAuthenticationToken authentication =
@@ -62,6 +65,11 @@ public class JwtFilter extends OncePerRequestFilter {
                         );
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+                
+                Long orgId = JwtUtil.extractOrganizationId(token);
+                if (orgId != null) {
+                    TenantContext.setCurrentTenant(orgId);
+                }
 
                 // Profile enforcement (bypass for auth endpoints)
                 if (!user.isProfileCompleted()
@@ -76,6 +84,10 @@ public class JwtFilter extends OncePerRequestFilter {
             }
         }
 
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            TenantContext.clear();
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.VisitOutcome;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -7,6 +8,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "visit_check_ins")
 public class VisitCheckIn {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -145,4 +151,13 @@ public class VisitCheckIn {
     public void setPaymentId(Long paymentId) {
         this.paymentId = paymentId;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

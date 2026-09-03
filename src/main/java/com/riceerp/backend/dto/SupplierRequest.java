@@ -1,12 +1,24 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+
 public class SupplierRequest {
+    @NotBlank(message = "Supplier name is required")
     private String supplierName;
+
+    @NotBlank(message = "Phone is required")
     private String phone;
+
     private String email;
     private String address;
     private String gstNumber;
+
+    @DecimalMin(value = "0.0", message = "Rating must be between 0 and 5")
+    @DecimalMax(value = "5.0", message = "Rating must be between 0 and 5")
     private double rating;
+
     private String category;
 
     public String getSupplierName() {

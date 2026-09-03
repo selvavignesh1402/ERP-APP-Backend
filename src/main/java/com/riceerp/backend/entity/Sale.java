@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PaymentMode;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -7,6 +8,10 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "sales")
 public class Sale {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,6 +51,15 @@ public class Sale {
 
     @Column(name = "grand_total", nullable = false)
     private double grandTotal = 0.0;
+
+    @Column(name = "client_reference_id", length = 64)
+    private String clientReferenceId;
+
+    @Column(name = "sales_order_id")
+    private Long salesOrderId;
+
+    @Column(name = "delivery_id")
+    private Long deliveryId;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -147,11 +161,43 @@ public class Sale {
         this.grandTotal = grandTotal;
     }
 
+    public String getClientReferenceId() {
+        return clientReferenceId;
+    }
+
+    public void setClientReferenceId(String clientReferenceId) {
+        this.clientReferenceId = clientReferenceId;
+    }
+
+    public Long getSalesOrderId() {
+        return salesOrderId;
+    }
+
+    public void setSalesOrderId(Long salesOrderId) {
+        this.salesOrderId = salesOrderId;
+    }
+
+    public Long getDeliveryId() {
+        return deliveryId;
+    }
+
+    public void setDeliveryId(Long deliveryId) {
+        this.deliveryId = deliveryId;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
     }
 }

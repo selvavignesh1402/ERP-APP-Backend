@@ -3,6 +3,7 @@ package com.riceerp.backend.controller;
 import com.riceerp.backend.dto.SupplierRequest;
 import com.riceerp.backend.entity.Supplier;
 import com.riceerp.backend.service.SupplierService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,12 +19,12 @@ public class SupplierController {
     }
 
     @PostMapping
-    public Supplier createSupplier(@RequestBody SupplierRequest request) {
+    public Supplier createSupplier(@Valid @RequestBody SupplierRequest request) {
         return supplierService.createSupplier(request);
     }
 
     @PutMapping("/{id}")
-    public Supplier updateSupplier(@PathVariable Long id, @RequestBody SupplierRequest request) {
+    public Supplier updateSupplier(@PathVariable Long id, @Valid @RequestBody SupplierRequest request) {
         return supplierService.updateSupplier(id, request);
     }
 

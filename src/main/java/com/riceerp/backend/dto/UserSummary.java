@@ -1,13 +1,13 @@
 package com.riceerp.backend.dto;
 
-import com.riceerp.backend.enums.Role;
+import com.riceerp.backend.enums.PlatformRole;
 
 public class UserSummary {
 
     private Long id;
     private String name;
     private String phoneNumber;
-    private Role role;
+    private PlatformRole role;
     private boolean active;
     private boolean profileCompleted;
 
@@ -35,11 +35,11 @@ public class UserSummary {
         this.phoneNumber = phoneNumber;
     }
 
-    public Role getRole() {
+    public PlatformRole getRole() {
         return role;
     }
 
-    public void setRole(Role role) {
+    public void setRole(PlatformRole role) {
         this.role = role;
     }
 

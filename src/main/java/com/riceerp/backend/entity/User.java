@@ -1,6 +1,6 @@
 package com.riceerp.backend.entity;
 
-import com.riceerp.backend.enums.Role;
+import com.riceerp.backend.enums.PlatformRole;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -33,8 +33,8 @@ public class User {
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false)
-    private Role role = Role.SALES;
+    @Column(name = "platform_role", nullable = false)
+    private PlatformRole platformRole = PlatformRole.USER;
 
     public Long getId() {
         return id;
@@ -88,11 +88,19 @@ public class User {
         this.passwordHash = passwordHash;
     }
 
-    public Role getRole() {
-        return role;
+    public String getPassword() {
+        return passwordHash;
     }
 
-    public void setRole(Role role) {
-        this.role = role;
+    public void setPassword(String password) {
+        this.passwordHash = password;
+    }
+
+    public PlatformRole getPlatformRole() {
+        return platformRole;
+    }
+
+    public void setPlatformRole(PlatformRole platformRole) {
+        this.platformRole = platformRole;
     }
 }

@@ -1,17 +1,17 @@
 package com.riceerp.backend.dto;
 
-import com.riceerp.backend.enums.Role;
+import com.riceerp.backend.enums.PlatformRole;
 
 public class UpdateUserRequest {
 
-    private Role role;
+    private PlatformRole role;
     private Boolean active;
 
-    public Role getRole() {
+    public PlatformRole getRole() {
         return role;
     }
 
-    public void setRole(Role role) {
+    public void setRole(PlatformRole role) {
         this.role = role;
     }
 

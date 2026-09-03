@@ -4,6 +4,7 @@ import com.riceerp.backend.dto.CheckInRequestDto;
 import com.riceerp.backend.dto.CheckOutRequestDto;
 import com.riceerp.backend.entity.VisitCheckIn;
 import com.riceerp.backend.service.VisitService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -24,7 +25,7 @@ public class VisitController {
     @PostMapping("/{scheduleId}/check-in")
     public ResponseEntity<VisitCheckIn> checkIn(
             @PathVariable Long scheduleId,
-            @RequestBody CheckInRequestDto dto,
+            @Valid @RequestBody CheckInRequestDto dto,
             Authentication auth) {
         Long salespersonId = getCurrentUserId(auth);
         return ResponseEntity.ok(visitService.checkIn(scheduleId, salespersonId, dto));
@@ -34,7 +35,7 @@ public class VisitController {
     @PutMapping("/{checkInId}/check-out")
     public ResponseEntity<VisitCheckIn> checkOut(
             @PathVariable Long checkInId,
-            @RequestBody CheckOutRequestDto dto) {
+            @Valid @RequestBody CheckOutRequestDto dto) {
         return ResponseEntity.ok(visitService.checkOut(checkInId, dto));
     }
 
@@ -51,15 +52,14 @@ public class VisitController {
     }
 
     private Long getCurrentUserId(Authentication auth) {
-        if (auth == null)
+        if (auth == null || auth.getPrincipal() == null) {
             throw new RuntimeException("Not authenticated");
-        Object principal = auth.getPrincipal();
-        if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
-            try {
-                return Long.parseLong(ud.getUsername());
-            } catch (NumberFormatException ignored) {
-            }
         }
-        throw new RuntimeException("Cannot resolve user id from authentication");
+        // JwtFilter stores the user id (Long) as the authentication principal
+        try {
+            return Long.parseLong(auth.getPrincipal().toString());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException("Cannot resolve user id from authentication");
+        }
     }
 }

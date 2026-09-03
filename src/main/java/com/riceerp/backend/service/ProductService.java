@@ -5,6 +5,7 @@ import com.riceerp.backend.entity.PriceHistory;
 import com.riceerp.backend.entity.Product;
 import com.riceerp.backend.enums.PriceType;
 import com.riceerp.backend.enums.Status;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.PriceHistoryRepository;
 import com.riceerp.backend.repository.ProductRepository;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,7 @@ public class ProductService {
     @Transactional
     public Product updateProduct(Long id, ProductRequest request) {
         Product product = productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Product not found with id: " + id));
 
         // Check for purchase price change
         if (product.getPurchasePrice() != request.getPurchasePrice()) {
@@ -88,7 +89,7 @@ public class ProductService {
 
     public Product getProductById(Long id) {
         return productRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Product not found with id: " + id));
     }
 
     @Transactional

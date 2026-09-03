@@ -1,8 +1,18 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
 public class GoodsReceiptItemRequest {
+    @NotNull(message = "Product is required")
     private Long productId;
+
+    @NotNull(message = "Received quantity is required")
+    @Positive(message = "Received quantity must be greater than zero")
     private double receivedQty;
+
+    @NotNull(message = "Unit price is required")
+    @Positive(message = "Unit price must be greater than zero")
     private double unitPrice;
 
     public Long getProductId() {

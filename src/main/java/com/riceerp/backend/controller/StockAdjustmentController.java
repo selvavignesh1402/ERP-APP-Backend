@@ -3,6 +3,7 @@ package com.riceerp.backend.controller;
 import com.riceerp.backend.dto.StockAdjustmentRequest;
 import com.riceerp.backend.entity.StockAdjustment;
 import com.riceerp.backend.service.StockAdjustmentService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,7 +19,7 @@ public class StockAdjustmentController {
     }
 
     @PostMapping
-    public StockAdjustment createAdjustment(@RequestBody StockAdjustmentRequest request) {
+    public StockAdjustment createAdjustment(@Valid @RequestBody StockAdjustmentRequest request) {
         return stockAdjustmentService.createAdjustment(request);
     }
 

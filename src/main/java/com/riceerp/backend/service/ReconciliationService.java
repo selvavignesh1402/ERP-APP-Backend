@@ -9,6 +9,8 @@ import com.riceerp.backend.entity.ReconciliationResult;
 import com.riceerp.backend.entity.SupplierInvoice;
 import com.riceerp.backend.entity.SupplierInvoiceItem;
 import com.riceerp.backend.enums.ReconciliationStatus;
+import com.riceerp.backend.exception.BusinessRuleException;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.PurchaseItemRepository;
 import com.riceerp.backend.repository.PurchaseRepository;
 import com.riceerp.backend.repository.ReconciliationResultRepository;
@@ -19,7 +21,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class ReconciliationService {
@@ -48,16 +49,26 @@ public class ReconciliationService {
     @Transactional
     public ReconciliationResult reconcile(Long purchaseId, Long invoiceId) {
         Purchase purchase = purchaseRepository.findById(purchaseId)
-                .orElseThrow(() -> new RuntimeException("Purchase not found with id: " + purchaseId));
+                .orElseThrow(() -> new NotFoundException("Purchase not found with id: " + purchaseId));
 
         SupplierInvoice invoice = invoiceService.getInvoiceById(invoiceId);
         if (invoice.getPurchase() == null || !invoice.getPurchase().getId().equals(purchaseId)) {
-            throw new RuntimeException("Invoice " + invoice.getInvoiceNumber() + " is not linked to purchase " + purchaseId + ".");
+            throw new BusinessRuleException("Invoice " + invoice.getInvoiceNumber() + " is not linked to purchase " + purchaseId + ".");
         }
 
         List<PurchaseItem> poItems = purchaseItemRepository.findByPurchaseId(purchaseId);
-        Map<Long, SupplierInvoiceItem> invoiceByProduct = invoiceService.getInvoiceItems(invoiceId).stream()
-                .collect(Collectors.toMap(i -> i.getProduct().getId(), i -> i));
+        // An invoice may legitimately contain the same product on multiple lines;
+        // combine them instead of crashing on duplicate map keys.
+        Map<Long, SupplierInvoiceItem> invoiceByProduct = new java.util.HashMap<>();
+        for (SupplierInvoiceItem item : invoiceService.getInvoiceItems(invoiceId)) {
+            Long productId = item.getProduct().getId();
+            SupplierInvoiceItem existing = invoiceByProduct.get(productId);
+            if (existing == null) {
+                invoiceByProduct.put(productId, item);
+            } else {
+                existing.setQuantity(existing.getQuantity() + item.getQuantity());
+            }
+        }
         Map<Long, Double> receivedByProduct = goodsReceiptService.getReceivedQuantities(purchaseId);
 
         List<ReconciliationItemDetail> details = new ArrayList<>();
@@ -135,13 +146,13 @@ public class ReconciliationService {
 
     public ReconciliationResult getById(Long id) {
         return reconciliationResultRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Reconciliation not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Reconciliation not found with id: " + id));
     }
 
     public ReconciliationResult getForPurchase(Long purchaseId) {
         return reconciliationResultRepository.findByPurchaseIdOrderByReconciledAtDesc(purchaseId).stream()
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("No reconciliation found for purchase: " + purchaseId));
+                .orElseThrow(() -> new NotFoundException("No reconciliation found for purchase: " + purchaseId));
     }
 
     private double round2(double v) {

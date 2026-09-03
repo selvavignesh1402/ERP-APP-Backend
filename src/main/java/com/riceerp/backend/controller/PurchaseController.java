@@ -7,6 +7,7 @@ import com.riceerp.backend.entity.Purchase;
 import com.riceerp.backend.entity.PurchaseItem;
 import com.riceerp.backend.entity.PurchaseReturn;
 import com.riceerp.backend.service.PurchaseService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,7 +23,7 @@ public class PurchaseController {
     }
 
     @PostMapping
-    public Purchase createPurchase(@RequestBody PurchaseRequest request) {
+    public Purchase createPurchase(@Valid @RequestBody PurchaseRequest request) {
         return purchaseService.createPurchase(request);
     }
 
@@ -72,7 +73,7 @@ public class PurchaseController {
     @PostMapping("/{id}/returns")
     public PurchaseReturn createPurchaseReturn(
             @PathVariable Long id,
-            @RequestBody PurchaseReturnRequest request) {
+            @Valid @RequestBody PurchaseReturnRequest request) {
         return purchaseService.createPurchaseReturn(id, request);
     }
 

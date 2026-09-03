@@ -1,22 +1,42 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+
 import java.time.DayOfWeek;
 import java.util.List;
 
 public class BeatPlanDto {
 
     private Long id;
+
+    @NotBlank(message = "Beat plan name is required")
     private String name;
+
+    @NotNull(message = "Salesperson is required")
     private Long salespersonId;
+
     private String salespersonName;
     private boolean isActive;
+
+    @NotEmpty(message = "Beat plan must contain at least one entry")
+    @Valid
     private List<EntryDto> entries;
 
     public static class EntryDto {
         private Long id;
+
+        @NotNull(message = "Day of week is required")
         private DayOfWeek dayOfWeek;
+
+        @NotNull(message = "Customer is required")
         private Long customerId;
+
         private String customerName;
+
+        @NotNull(message = "Visit order is required")
         private int visitOrder;
 
         public Long getId() {

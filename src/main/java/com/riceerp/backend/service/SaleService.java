@@ -1,9 +1,13 @@
 package com.riceerp.backend.service;
 
+import com.riceerp.backend.dto.OfflineSaleSyncRequest;
 import com.riceerp.backend.dto.ProductSalesHistoryResponse;
 import com.riceerp.backend.dto.SaleItemRequest;
 import com.riceerp.backend.dto.SaleRequest;
+import com.riceerp.backend.dto.SyncBatchResponse;
 import com.riceerp.backend.entity.Customer;
+import com.riceerp.backend.exception.BusinessRuleException;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.CustomerRepository;
 import com.riceerp.backend.entity.Payment;
 import com.riceerp.backend.entity.Product;
@@ -16,6 +20,8 @@ import com.riceerp.backend.repository.PaymentRepository;
 import com.riceerp.backend.repository.ProductRepository;
 import com.riceerp.backend.repository.SaleItemRepository;
 import com.riceerp.backend.repository.SaleRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,10 +30,13 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 
 @Service
 public class SaleService {
+
+    private static final Logger log = LoggerFactory.getLogger(SaleService.class);
 
     private final SaleRepository saleRepository;
     private final SaleItemRepository saleItemRepository;
@@ -52,14 +61,28 @@ public class SaleService {
 
     @Transactional
     public Sale createSale(SaleRequest request) {
+        return createSaleInternal(request, null, null);
+    }
+
+    @Transactional
+    public Sale createSaleInternal(SaleRequest request, String clientReferenceId, LocalDateTime saleDate) {
         if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new RuntimeException("Sale must contain at least one item.");
+            throw new BusinessRuleException("Sale must contain at least one item.");
+        }
+
+        // Idempotency check: If sale with clientReferenceId already exists, return existing
+        if (clientReferenceId != null && !clientReferenceId.trim().isEmpty()) {
+            Optional<Sale> existing = saleRepository.findByClientReferenceId(clientReferenceId.trim());
+            if (existing.isPresent()) {
+                log.info("Sale with clientReferenceId {} already exists. Skipping duplicate.", clientReferenceId);
+                return existing.get();
+            }
         }
 
         Customer customer = null;
         if (request.getCustomerId() != null) {
             customer = customerRepository.findById(request.getCustomerId())
-                    .orElseThrow(() -> new RuntimeException("Customer not found with id: " + request.getCustomerId()));
+                    .orElseThrow(() -> new NotFoundException("Customer not found with id: " + request.getCustomerId()));
         }
 
         // Calculate Subtotal
@@ -80,10 +103,10 @@ public class SaleService {
         // Credit limit validation logic
         if (PaymentMode.CREDIT.name().equalsIgnoreCase(request.getPaymentMode())) {
             if (customer == null) {
-                throw new RuntimeException("Customer lookup/registration is required for CREDIT payment sales.");
+                throw new BusinessRuleException("Customer lookup/registration is required for CREDIT payment sales.");
             }
-            if (customer.getCreditBalance() + grandTotal > customer.getCreditLimit()) {
-                throw new RuntimeException("Credit limit exceeded! Customer's remaining credit: "
+            if (customer.getCreditLimit() > 0 && customer.getCreditBalance() + grandTotal > customer.getCreditLimit()) {
+                throw new BusinessRuleException("Credit limit exceeded! Customer's remaining credit: "
                         + (customer.getCreditLimit() - customer.getCreditBalance()));
             }
             customer.setCreditBalance(customer.getCreditBalance() + grandTotal);
@@ -102,7 +125,8 @@ public class SaleService {
         sale.setSgst(sgst);
         sale.setIgst(0.0);
         sale.setGrandTotal(grandTotal);
-        sale.setSaleDate(LocalDateTime.now());
+        sale.setClientReferenceId(clientReferenceId);
+        sale.setSaleDate(saleDate != null ? saleDate : LocalDateTime.now());
         sale.setCreatedAt(LocalDateTime.now());
 
         Sale savedSale = saleRepository.save(sale);
@@ -110,11 +134,11 @@ public class SaleService {
         // Process line items & deduct stock
         for (SaleItemRequest itemReq : request.getItems()) {
             Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new RuntimeException("Product not found with id: " + itemReq.getProductId()));
+                    .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
 
             // Stock Validation
             if (product.getStock() < itemReq.getQuantity()) {
-                throw new RuntimeException("Insufficient stock for product: " + product.getProductName() +
+                throw new BusinessRuleException("Insufficient stock for product: " + product.getProductName() +
                         " (Available: " + product.getStock() + ", Requested: " + itemReq.getQuantity() + ")");
             }
 
@@ -141,11 +165,59 @@ public class SaleService {
             payment.setReferenceId(savedSale.getId());
             payment.setAmount(grandTotal);
             payment.setPaymentMode(PaymentMode.valueOf(request.getPaymentMode().toUpperCase()));
-            payment.setPaymentDate(LocalDateTime.now());
+            payment.setPaymentDate(saleDate != null ? saleDate : LocalDateTime.now());
             paymentRepository.save(payment);
         }
 
         return savedSale;
+    }
+
+    // Batch Synchronization of Offline Invoices
+    public SyncBatchResponse syncBatchSales(List<OfflineSaleSyncRequest> requests) {
+        SyncBatchResponse response = new SyncBatchResponse();
+        if (requests == null || requests.isEmpty()) {
+            return response;
+        }
+
+        response.setTotalProcessed(requests.size());
+
+        for (OfflineSaleSyncRequest req : requests) {
+            String clientRef = req.getClientReferenceId();
+            try {
+                // Check if already synced (Idempotency)
+                if (clientRef != null && !clientRef.trim().isEmpty()) {
+                    Optional<Sale> existing = saleRepository.findByClientReferenceId(clientRef.trim());
+                    if (existing.isPresent()) {
+                        Sale s = existing.get();
+                        response.getResults().add(new SyncBatchResponse.SyncItemResult(
+                                clientRef, s.getId(), s.getBillNumber(), "ALREADY_SYNCED", null));
+                        response.setDuplicateCount(response.getDuplicateCount() + 1);
+                        continue;
+                    }
+                }
+
+                // Map to SaleRequest
+                SaleRequest saleReq = new SaleRequest();
+                saleReq.setCustomerId(req.getCustomerId());
+                saleReq.setCustomerName(req.getCustomerName());
+                saleReq.setPaymentMode(req.getPaymentMode());
+                saleReq.setDiscount(req.getDiscount());
+                saleReq.setItems(req.getItems());
+
+                Sale created = createSaleInternal(saleReq, clientRef, req.getOfflineCreatedAt());
+                response.getResults().add(new SyncBatchResponse.SyncItemResult(
+                        clientRef, created.getId(), created.getBillNumber(), "SYNCED", null));
+                response.setSuccessCount(response.getSuccessCount() + 1);
+
+            } catch (Exception ex) {
+                log.error("Failed to sync offline sale with clientRef {}: {}", clientRef, ex.getMessage());
+                response.getResults().add(new SyncBatchResponse.SyncItemResult(
+                        clientRef, null, null, "FAILED", ex.getMessage()));
+                response.setFailureCount(response.getFailureCount() + 1);
+            }
+        }
+
+        return response;
     }
 
     public List<Sale> listSales() {
@@ -154,7 +226,7 @@ public class SaleService {
 
     public Sale getSaleById(Long id) {
         return saleRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Sale invoice not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Sale invoice not found with id: " + id));
     }
 
     public List<SaleItem> getSaleItems(Long saleId) {
@@ -165,12 +237,12 @@ public class SaleService {
 
     public ProductSalesHistoryResponse getProductSalesHistory(Long productId, LocalDate startDate, LocalDate endDate) {
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
+                .orElseThrow(() -> new NotFoundException("Product not found with id: " + productId));
 
         LocalDate start = startDate != null ? startDate : LocalDate.now().minusDays(30);
         LocalDate end = endDate != null ? endDate : LocalDate.now();
         if (start.isAfter(end)) {
-            throw new RuntimeException("Start date cannot be after end date.");
+            throw new BusinessRuleException("Start date cannot be after end date.");
         }
 
         LocalDateTime startTime = start.atStartOfDay();
@@ -208,5 +280,21 @@ public class SaleService {
                         Math.round(acc[0] * 100.0) / 100.0,
                         Math.round(acc[1] * 100.0) / 100.0)));
         return resp;
+    }
+
+    @Transactional
+    public Sale createSaleFromDelivery(Long deliveryId, Long salesOrderId, Customer customer, List<SaleItemRequest> items, PaymentMode paymentMode, double discount) {
+        SaleRequest request = new SaleRequest();
+        request.setCustomerId(customer != null ? customer.getId() : null);
+        request.setCustomerName(customer != null ? customer.getCustomerName() : "Counter Sale");
+        request.setPaymentMode(paymentMode != null ? paymentMode.name() : PaymentMode.CREDIT.name());
+        request.setDiscount(discount);
+        request.setItems(items);
+
+        String clientRef = "DELIVERY-" + deliveryId + "-" + System.currentTimeMillis();
+        Sale sale = createSaleInternal(request, clientRef, LocalDateTime.now());
+        sale.setDeliveryId(deliveryId);
+        sale.setSalesOrderId(salesOrderId);
+        return saleRepository.save(sale);
     }
 }

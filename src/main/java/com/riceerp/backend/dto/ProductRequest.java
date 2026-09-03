@@ -1,15 +1,34 @@
 package com.riceerp.backend.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
+
 public class ProductRequest {
+    @NotBlank(message = "Product name is required")
     private String productName;
+
+    @NotBlank(message = "Category is required")
     private String category;
+
     private String brand;
     private String unit;
+
+    @PositiveOrZero(message = "Purchase price must be zero or greater")
     private double purchasePrice;
+
+    @Positive(message = "Selling price must be greater than zero")
     private double sellingPrice;
+
+    @PositiveOrZero(message = "Stock must be zero or greater")
     private double stock;
+
+    @PositiveOrZero(message = "Minimum stock must be zero or greater")
     private double minimumStock;
+
+    @PositiveOrZero(message = "GST rate must be zero or greater")
     private double gstRate;
+
     private String hsnCode;
 
     public String getProductName() {

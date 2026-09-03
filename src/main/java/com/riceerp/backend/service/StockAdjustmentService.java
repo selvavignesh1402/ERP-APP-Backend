@@ -4,6 +4,8 @@ import com.riceerp.backend.dto.StockAdjustmentRequest;
 import com.riceerp.backend.entity.Product;
 import com.riceerp.backend.entity.StockAdjustment;
 import com.riceerp.backend.enums.MovementType;
+import com.riceerp.backend.exception.BusinessRuleException;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.ProductRepository;
 import com.riceerp.backend.repository.StockAdjustmentRepository;
 import org.springframework.stereotype.Service;
@@ -30,11 +32,11 @@ public class StockAdjustmentService {
     @Transactional
     public StockAdjustment createAdjustment(StockAdjustmentRequest request) {
         Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + request.getProductId()));
+                .orElseThrow(() -> new NotFoundException("Product not found with id: " + request.getProductId()));
 
         double newStock = product.getStock() + request.getQuantityChange();
         if (newStock < 0) {
-            throw new RuntimeException("Adjustment would cause negative stock (" + newStock + ") for product: "
+            throw new BusinessRuleException("Adjustment would cause negative stock (" + newStock + ") for product: "
                     + product.getProductName());
         }
 

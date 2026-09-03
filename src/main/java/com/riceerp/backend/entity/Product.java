@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.Status;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -7,6 +8,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "products")
 public class Product {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -50,7 +56,7 @@ public class Product {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @Version
-    private Long version;
+    private Long version = 0L;
 
     public Long getId() {
         return id;
@@ -163,4 +169,13 @@ public class Product {
     public void setVersion(Long version) {
         this.version = version;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

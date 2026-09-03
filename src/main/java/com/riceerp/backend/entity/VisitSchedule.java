@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.VisitStatus;
 import jakarta.persistence.*;
 import java.time.LocalDate;
@@ -7,6 +8,11 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "visit_schedules")
 public class VisitSchedule {
+
+    @TenantId
+    @Column(name = "organization_id")
+    private Long organizationId;
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -90,4 +96,13 @@ public class VisitSchedule {
     public void setStatus(VisitStatus status) {
         this.status = status;
     }
+
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
+    }
+
 }

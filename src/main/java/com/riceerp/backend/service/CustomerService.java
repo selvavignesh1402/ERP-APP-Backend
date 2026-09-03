@@ -3,6 +3,7 @@ package com.riceerp.backend.service;
 import com.riceerp.backend.dto.CustomerRequest;
 import com.riceerp.backend.entity.Customer;
 import com.riceerp.backend.enums.Status;
+import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.CustomerRepository;
 import org.springframework.stereotype.Service;
 
@@ -31,7 +32,7 @@ public class CustomerService {
 
     public Customer updateCustomer(Long id, CustomerRequest request) {
         Customer customer = customerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Customer not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Customer not found with id: " + id));
 
         customer.setCustomerName(request.getCustomerName());
         customer.setPhone(request.getPhone());
@@ -44,7 +45,7 @@ public class CustomerService {
 
     public Customer toggleStatus(Long id) {
         Customer customer = customerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Customer not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Customer not found with id: " + id));
 
         customer.setStatus(customer.getStatus() == Status.ACTIVE ? Status.INACTIVE : Status.ACTIVE);
         return customerRepository.save(customer);
@@ -63,6 +64,6 @@ public class CustomerService {
 
     public Customer getCustomerById(Long id) {
         return customerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Customer not found with id: " + id));
+                .orElseThrow(() -> new NotFoundException("Customer not found with id: " + id));
     }
 }

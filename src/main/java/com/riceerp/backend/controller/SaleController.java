@@ -5,6 +5,7 @@ import com.riceerp.backend.dto.SaleRequest;
 import com.riceerp.backend.entity.Sale;
 import com.riceerp.backend.entity.SaleItem;
 import com.riceerp.backend.service.SaleService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,8 +23,14 @@ public class SaleController {
     }
 
     @PostMapping
-    public Sale createSale(@RequestBody SaleRequest request) {
+    public Sale createSale(@Valid @RequestBody SaleRequest request) {
         return saleService.createSale(request);
+    }
+
+    @PostMapping("/sync")
+    public com.riceerp.backend.dto.SyncBatchResponse syncSales(
+            @RequestBody List<com.riceerp.backend.dto.OfflineSaleSyncRequest> requests) {
+        return saleService.syncBatchSales(requests);
     }
 
     @GetMapping
