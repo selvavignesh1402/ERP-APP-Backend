@@ -13,6 +13,14 @@ public interface OrganizationMembershipRepository extends JpaRepository<Organiza
     List<OrganizationMembership> findByUserId(Long userId);
     
     List<OrganizationMembership> findByOrganizationId(Long organizationId);
+
+    List<OrganizationMembership> findAllByOrganizationIdAndIsActiveTrue(Long organizationId);
     
     Optional<OrganizationMembership> findByUserIdAndOrganizationId(Long userId, Long organizationId);
+
+    Optional<OrganizationMembership> findByUserIdAndOrganizationIdAndIsActiveTrue(Long userId, Long organizationId);
+
+    Optional<OrganizationMembership> findByIdAndOrganizationId(Long id, Long organizationId);
+
+    long countByOrganizationId(Long organizationId);
 }

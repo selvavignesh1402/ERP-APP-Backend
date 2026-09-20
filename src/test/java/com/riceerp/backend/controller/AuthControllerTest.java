@@ -4,6 +4,7 @@ import com.riceerp.backend.dto.SignupRequest;
 import com.riceerp.backend.entity.User;
 import com.riceerp.backend.repository.UserRepository;
 import com.riceerp.backend.service.OtpService;
+import com.riceerp.backend.service.PermissionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -22,6 +23,7 @@ class AuthControllerTest {
     private com.riceerp.backend.repository.OrganizationMembershipRepository membershipRepository;
     private com.riceerp.backend.repository.OrganizationRepository organizationRepository;
     private PasswordEncoder passwordEncoder;
+    private PermissionService permissionService;
     private AuthController authController;
 
     @BeforeEach
@@ -31,7 +33,8 @@ class AuthControllerTest {
         membershipRepository = mock(com.riceerp.backend.repository.OrganizationMembershipRepository.class);
         organizationRepository = mock(com.riceerp.backend.repository.OrganizationRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        authController = new AuthController(otpService, userRepository, membershipRepository, organizationRepository, passwordEncoder);
+        permissionService = mock(PermissionService.class);
+        authController = new AuthController(otpService, userRepository, membershipRepository, organizationRepository, passwordEncoder, permissionService);
     }
 
     @Test
@@ -67,20 +70,18 @@ class AuthControllerTest {
     }
 
     @Test
-    void signupWithPassword_whenPasswordIsValid_shouldSucceed() {
+    void signupWithPassword_whenUserAlreadyExists_shouldThrowException() {
         SignupRequest request = new SignupRequest();
         request.setName("Test User");
         request.setPhoneNumber("1234567890");
-        request.setPassword("123456");
+        request.setPassword("password123");
 
-        when(userRepository.existsByPhoneNumber("1234567890")).thenReturn(false);
-        when(passwordEncoder.encode("123456")).thenReturn("hashed_password");
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.existsByPhoneNumber("1234567890")).thenReturn(true);
 
-        Map<String, Object> result = authController.signupWithPassword(request);
+        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
+            authController.signupWithPassword(request);
+        });
 
-        assertNotNull(result);
-        assertEquals("Signup successful", result.get("message"));
-        verify(userRepository, times(1)).save(any(User.class));
+        assertEquals("Phone number already registered", exception.getMessage());
     }
 }

@@ -12,8 +12,8 @@ public class TenantIdentifierResolver implements CurrentTenantIdentifierResolver
         if (tenantId != null) {
             return tenantId;
         }
-        // Fallback for background tasks or app startup
-        return 1L; 
+        // Fail-closed tenant resolution: 0L matches no tenant data instead of leaking org 1
+        return 0L; 
     }
 
     @Override

@@ -6,6 +6,7 @@ import com.riceerp.backend.enums.Status;
 import com.riceerp.backend.repository.ProductRepository;
 import com.riceerp.backend.service.StockMovementService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -27,6 +28,7 @@ public class InventoryController {
     }
 
     @GetMapping("/low-stock")
+    @PreAuthorize("hasAuthority('inventory:view')")
     public List<Map<String, Object>> lowStock() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Product p : productRepository.findByStatus(Status.ACTIVE)) {
@@ -45,6 +47,7 @@ public class InventoryController {
     }
 
     @GetMapping("/movements")
+    @PreAuthorize("hasAuthority('inventory:view')")
     public List<StockMovement> movements(
             @RequestParam(required = false) Long productId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,

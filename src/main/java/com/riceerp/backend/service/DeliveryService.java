@@ -140,9 +140,20 @@ public class DeliveryService {
         return deliveryRepository.findByDeliveryPersonIdOrderByAssignedAtDesc(deliveryPersonId);
     }
 
+    private void assertDeliveryAccess(Delivery delivery, Long userId, boolean isPrivileged) {
+        if (isPrivileged) {
+            return;
+        }
+        if (delivery.getDeliveryPerson() != null && !delivery.getDeliveryPerson().getId().equals(userId)) {
+            throw new BusinessRuleException("You are not authorized to modify this delivery. It is assigned to another agent.");
+        }
+    }
+
     @Transactional
-    public Delivery startDelivery(Long deliveryId) {
+    public Delivery startDelivery(Long deliveryId, Long userId, boolean isPrivileged) {
         Delivery delivery = getDeliveryById(deliveryId);
+        assertDeliveryAccess(delivery, userId, isPrivileged);
+
         if (delivery.getStatus() != DeliveryStatus.ASSIGNED) {
             throw new BusinessRuleException("Delivery has already been started or closed.");
         }
@@ -159,8 +170,10 @@ public class DeliveryService {
     }
 
     @Transactional
-    public Delivery confirmDelivery(Long deliveryId, DeliveryConfirmRequest request) {
+    public Delivery confirmDelivery(Long deliveryId, DeliveryConfirmRequest request, Long userId, boolean isPrivileged) {
         Delivery delivery = getDeliveryById(deliveryId);
+        assertDeliveryAccess(delivery, userId, isPrivileged);
+
         if (delivery.getStatus() == DeliveryStatus.DELIVERED) {
             throw new BusinessRuleException("Delivery has already been finalized and invoiced.");
         }
@@ -236,8 +249,10 @@ public class DeliveryService {
     }
 
     @Transactional
-    public Delivery markDeliveryFailed(Long deliveryId, DeliveryFailRequest request) {
+    public Delivery markDeliveryFailed(Long deliveryId, DeliveryFailRequest request, Long userId, boolean isPrivileged) {
         Delivery delivery = getDeliveryById(deliveryId);
+        assertDeliveryAccess(delivery, userId, isPrivileged);
+
         delivery.setStatus(DeliveryStatus.FAILED);
         delivery.setFailureReason(request.getFailureReason());
         if (request.getDeliveryNotes() != null) {

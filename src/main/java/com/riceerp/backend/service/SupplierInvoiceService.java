@@ -131,4 +131,9 @@ public class SupplierInvoiceService {
         }
         return all;
     }
+
+    @Transactional
+    public SupplierInvoice save(SupplierInvoice invoice) {
+        return invoiceRepository.save(invoice);
+    }
 }

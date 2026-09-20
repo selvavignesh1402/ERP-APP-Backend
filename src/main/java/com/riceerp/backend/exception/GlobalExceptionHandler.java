@@ -28,6 +28,11 @@ public class GlobalExceptionHandler {
         return status(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied(org.springframework.security.access.AccessDeniedException ex) {
+        return status(HttpStatus.FORBIDDEN, "Access Denied: You do not have permission to perform this action");
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidationExceptions(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
@@ -40,6 +45,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<Map<String, String>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return status(HttpStatus.BAD_REQUEST, "Invalid value for parameter: " + ex.getName());
+    }
+
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, String>> handleOptimisticLocking(org.springframework.dao.OptimisticLockingFailureException ex) {
+        log.warn("Optimistic locking conflict detected", ex);
+        return status(HttpStatus.CONFLICT, "Concurrent update conflict detected. Please refresh and retry.");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

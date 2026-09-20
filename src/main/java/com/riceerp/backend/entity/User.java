@@ -1,5 +1,6 @@
 package com.riceerp.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.riceerp.backend.enums.PlatformRole;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
@@ -80,6 +81,8 @@ public class User {
         this.createdAt = createdAt;
     }
 
+    // Credentials are internal only, including when User is nested in business API responses.
+    @JsonIgnore
     public String getPasswordHash() {
         return passwordHash;
     }
@@ -88,6 +91,7 @@ public class User {
         this.passwordHash = passwordHash;
     }
 
+    @JsonIgnore
     public String getPassword() {
         return passwordHash;
     }

@@ -7,6 +7,7 @@ import com.riceerp.backend.service.BeatPlanService;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,53 +27,58 @@ public class BeatPlanController {
 
     // Manager: Create a beat plan
     @PostMapping
+    @PreAuthorize("hasAuthority('beat-plan:manage')")
     public ResponseEntity<BeatPlanDto> createBeatPlan(@Valid @RequestBody BeatPlanDto dto) {
         return ResponseEntity.ok(beatPlanService.createBeatPlan(dto));
     }
 
     // Manager: List all beat plans
     @GetMapping
+    @PreAuthorize("hasAuthority('beat-plan:manage') or hasAuthority('beat-plan:view')")
     public ResponseEntity<List<BeatPlanDto>> getAllPlans() {
         return ResponseEntity.ok(beatPlanService.getAllPlans());
     }
 
     // Manager: Get one beat plan
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('beat-plan:manage') or hasAuthority('beat-plan:view')")
     public ResponseEntity<BeatPlanDto> getPlanById(@PathVariable Long id) {
         return ResponseEntity.ok(beatPlanService.getPlanById(id));
     }
 
     // Manager: Update a beat plan
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('beat-plan:manage')")
     public ResponseEntity<BeatPlanDto> updateBeatPlan(@PathVariable Long id, @Valid @RequestBody BeatPlanDto dto) {
         return ResponseEntity.ok(beatPlanService.updateBeatPlan(id, dto));
     }
 
     // Manager: List plans for a specific salesperson
     @GetMapping("/salesperson/{salespersonId}")
+    @PreAuthorize("hasAuthority('beat-plan:manage') or hasAuthority('beat-plan:view')")
     public ResponseEntity<List<BeatPlanDto>> getPlansForSalesperson(@PathVariable Long salespersonId) {
         return ResponseEntity.ok(beatPlanService.getPlansForSalesperson(salespersonId));
     }
 
     // Manager: Generate weekly schedules (idempotent)
     @PostMapping("/generate-week")
+    @PreAuthorize("hasAuthority('beat-plan:manage')")
     public ResponseEntity<Map<String, Object>> generateWeek(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate weekStart) {
         int count = beatPlanService.generateWeeklySchedules(weekStart);
         return ResponseEntity.ok(Map.of("schedulesCreated", count, "weekStart", weekStart.toString()));
     }
 
-    // Salesperson: Get today's route (uses JWT to identify user)
+    // Salesperson: Get today's route
     @GetMapping("/my-route")
+    @PreAuthorize("hasAuthority('beat-plan:view')")
     public ResponseEntity<List<TodayRouteDto>> getMyRoute(Authentication auth) {
-        // Auth principal holds phone number; we look up userId from SecurityContext
-        // For simplicity we accept salespersonId as query param here
-        // (integrate with your existing JWT / SecurityContext pattern)
         return ResponseEntity.ok(beatPlanService.getTodayRoute(getCurrentUserId(auth)));
     }
 
-    // Salesperson: Get route for a specific date
+    // Salesperson / Manager: Get route for a specific date
     @GetMapping("/route/{salespersonId}")
+    @PreAuthorize("hasAuthority('beat-plan:manage') or hasAuthority('beat-plan:view')")
     public ResponseEntity<List<TodayRouteDto>> getRouteForSalesperson(
             @PathVariable Long salespersonId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -81,18 +87,17 @@ public class BeatPlanController {
 
     // Manager: Live dashboard
     @GetMapping("/manager-dashboard")
+    @PreAuthorize("hasAuthority('beat-plan:manage') or hasAuthority('beat-plan:view')")
     public ResponseEntity<ManagerDashboardDto> getManagerDashboard(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         LocalDate targetDate = date != null ? date : LocalDate.now();
         return ResponseEntity.ok(beatPlanService.getManagerDashboard(targetDate));
     }
 
-    // ─── helper: extract user id from Spring Security principal ───
     private Long getCurrentUserId(Authentication auth) {
         if (auth == null || auth.getPrincipal() == null) {
             throw new RuntimeException("Not authenticated");
         }
-        // JwtFilter stores the user id (Long) as the authentication principal
         try {
             return Long.parseLong(auth.getPrincipal().toString());
         } catch (NumberFormatException e) {

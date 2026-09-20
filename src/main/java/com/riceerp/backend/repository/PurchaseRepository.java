@@ -13,6 +13,9 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Long> {
 
     List<Purchase> findByInvoiceNumberContainingIgnoreCase(String invoiceNumber);
 
+    @Query("SELECT COALESCE(SUM(p.totalAmount), 0) FROM Purchase p WHERE p.purchaseDate BETWEEN :start AND :end AND (:orgId IS NULL OR p.organizationId = :orgId)")
+    double sumTotalAmountByPurchaseDateBetweenAndOrganizationId(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end, @Param("orgId") Long orgId);
+
     @Query("SELECT COALESCE(SUM(p.totalAmount), 0) FROM Purchase p WHERE p.purchaseDate BETWEEN :start AND :end")
     double sumTotalAmountByPurchaseDateBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

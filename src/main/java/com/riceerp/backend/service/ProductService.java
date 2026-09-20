@@ -69,7 +69,7 @@ public class ProductService {
         product.setCategory(request.getCategory());
         product.setBrand(request.getBrand());
         product.setUnit(request.getUnit());
-        product.setStock(request.getStock());
+        // Stock quantity is decoupled from updateProduct to guarantee audited stock movements
         product.setMinimumStock(request.getMinimumStock());
         product.setGstRate(request.getGstRate());
         product.setHsnCode(request.getHsnCode());

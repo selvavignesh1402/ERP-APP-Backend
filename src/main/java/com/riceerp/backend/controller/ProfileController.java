@@ -7,6 +7,7 @@ import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.UserProfileRepository;
 import com.riceerp.backend.repository.UserRepository;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -14,6 +15,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/profile")
+@PreAuthorize("isAuthenticated()")
 public class ProfileController {
 
     private final UserProfileRepository profileRepository;

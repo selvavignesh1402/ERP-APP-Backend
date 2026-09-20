@@ -8,6 +8,8 @@ import com.riceerp.backend.enums.PlatformRole;
 import com.riceerp.backend.repository.OrganizationMembershipRepository;
 import com.riceerp.backend.repository.OrganizationRepository;
 import com.riceerp.backend.repository.UserRepository;
+import com.riceerp.backend.service.PermissionService;
+import com.riceerp.backend.security.ProvisioningPasswordPolicy;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,15 +26,18 @@ public class MasterAdminController {
     private final UserRepository userRepository;
     private final OrganizationMembershipRepository membershipRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PermissionService permissionService;
 
     public MasterAdminController(OrganizationRepository organizationRepository,
                                  UserRepository userRepository,
                                  OrganizationMembershipRepository membershipRepository,
-                                 PasswordEncoder passwordEncoder) {
+                                 PasswordEncoder passwordEncoder,
+                                 PermissionService permissionService) {
         this.organizationRepository = organizationRepository;
         this.userRepository = userRepository;
         this.membershipRepository = membershipRepository;
         this.passwordEncoder = passwordEncoder;
+        this.permissionService = permissionService;
     }
 
     // 1. Platform Metrics Summary
@@ -64,9 +69,7 @@ public class MasterAdminController {
             item.put("createdAt", org.getCreatedAt());
             item.put("status", "ACTIVE");
             
-            long memberCount = membershipRepository.findAll().stream()
-                    .filter(m -> m.getOrganization().getId().equals(org.getId()))
-                    .count();
+            long memberCount = membershipRepository.countByOrganizationId(org.getId());
             item.put("userCount", memberCount);
 
             result.add(item);
@@ -116,8 +119,9 @@ public class MasterAdminController {
         if (adminName == null || adminName.trim().isEmpty()) {
             adminName = name.trim() + " Admin";
         }
-        if (adminPassword == null || adminPassword.trim().isEmpty()) {
-            adminPassword = "admin123";
+        User existingAdmin = userRepository.findByPhoneNumber(adminPhone.trim()).orElse(null);
+        if (existingAdmin == null) {
+            ProvisioningPasswordPolicy.validate(adminPassword);
         }
 
         // 1. Create and save Organization
@@ -129,7 +133,7 @@ public class MasterAdminController {
         // 2. Find or create User
         final String finalAdminName = adminName.trim();
         final String finalAdminPassword = adminPassword;
-        User adminUser = userRepository.findByPhoneNumber(adminPhone.trim())
+        User adminUser = Optional.ofNullable(existingAdmin)
                 .orElseGet(() -> {
                     User newUser = new User();
                     newUser.setName(finalAdminName);
@@ -150,6 +154,9 @@ public class MasterAdminController {
         membership.setJoinedAt(LocalDateTime.now());
         membershipRepository.save(membership);
 
+        // 4. Seed default permission matrix for the newly provisioned organization
+        permissionService.seedPermissionsForOrg(savedOrg.getId());
+
         Map<String, Object> result = new HashMap<>();
         result.put("id", savedOrg.getId());
         result.put("name", savedOrg.getName());
@@ -163,4 +170,3 @@ public class MasterAdminController {
         return ResponseEntity.ok(result);
     }
 }
-

@@ -23,15 +23,19 @@ import com.riceerp.backend.repository.SaleRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.UUID;
 
 @Service
 public class SaleService {
@@ -44,19 +48,22 @@ public class SaleService {
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
     private final StockMovementService stockMovementService;
+    private final TransactionTemplate transactionTemplate;
 
     public SaleService(SaleRepository saleRepository,
             SaleItemRepository saleItemRepository,
             ProductRepository productRepository,
             PaymentRepository paymentRepository,
             CustomerRepository customerRepository,
-            StockMovementService stockMovementService) {
+            StockMovementService stockMovementService,
+            PlatformTransactionManager transactionManager) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
         this.productRepository = productRepository;
         this.paymentRepository = paymentRepository;
         this.customerRepository = customerRepository;
         this.stockMovementService = stockMovementService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @Transactional
@@ -85,20 +92,51 @@ public class SaleService {
                     .orElseThrow(() -> new NotFoundException("Customer not found with id: " + request.getCustomerId()));
         }
 
-        // Calculate Subtotal
+        // Validate line items, fetch and verify products and prices
+        List<Product> productsToUpdate = new ArrayList<>();
         double totalAmt = 0.0;
+
         for (SaleItemRequest itemReq : request.getItems()) {
-            totalAmt += itemReq.getQuantity() * itemReq.getPrice();
+            if (itemReq.getQuantity() <= 0) {
+                throw new BusinessRuleException("Item quantity must be greater than zero.");
+            }
+
+            Product product = productRepository.findById(itemReq.getProductId())
+                    .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
+
+            // Stock validation
+            if (product.getStock() < itemReq.getQuantity()) {
+                throw new BusinessRuleException("Insufficient stock for product: " + product.getProductName() +
+                        " (Available: " + product.getStock() + ", Requested: " + itemReq.getQuantity() + ")");
+            }
+
+            // Price validation and defaulting
+            double effectivePrice = itemReq.getPrice();
+            if (effectivePrice <= 0) {
+                effectivePrice = product.getSellingPrice();
+                itemReq.setPrice(effectivePrice);
+            } else if (product.getPurchasePrice() > 0 && effectivePrice < product.getPurchasePrice()) {
+                throw new BusinessRuleException("Selling price (₹" + effectivePrice + ") cannot be lower than cost price (₹" + product.getPurchasePrice() + ") for " + product.getProductName());
+            }
+
+            totalAmt += itemReq.getQuantity() * effectivePrice;
+            productsToUpdate.add(product);
         }
 
-        double netTotal = totalAmt - request.getDiscount();
-        if (netTotal < 0)
-            netTotal = 0;
+        double discount = request.getDiscount();
+        if (discount < 0) {
+            throw new BusinessRuleException("Discount cannot be negative.");
+        }
+        if (discount > totalAmt) {
+            throw new BusinessRuleException("Discount (₹" + discount + ") cannot exceed total sale amount (₹" + totalAmt + ").");
+        }
+
+        double netTotal = totalAmt - discount;
 
         // Taxes structures (CGST 2.5%, SGST 2.5%)
-        double cgst = netTotal * 0.025;
-        double sgst = netTotal * 0.025;
-        double grandTotal = netTotal + cgst + sgst;
+        double cgst = Math.round(netTotal * 0.025 * 100.0) / 100.0;
+        double sgst = Math.round(netTotal * 0.025 * 100.0) / 100.0;
+        double grandTotal = Math.round((netTotal + cgst + sgst) * 100.0) / 100.0;
 
         // Credit limit validation logic
         if (PaymentMode.CREDIT.name().equalsIgnoreCase(request.getPaymentMode())) {
@@ -115,12 +153,12 @@ public class SaleService {
 
         // Create Sale Entity
         Sale sale = new Sale();
-        sale.setBillNumber("BILL-" + System.currentTimeMillis());
+        sale.setBillNumber("BILL-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase());
         sale.setCustomerName(customer != null ? customer.getCustomerName() : request.getCustomerName());
         sale.setCustomer(customer);
         sale.setPaymentMode(PaymentMode.valueOf(request.getPaymentMode().toUpperCase()));
-        sale.setTotal(totalAmt);
-        sale.setDiscount(request.getDiscount());
+        sale.setTotal(Math.round(totalAmt * 100.0) / 100.0);
+        sale.setDiscount(Math.round(discount * 100.0) / 100.0);
         sale.setCgst(cgst);
         sale.setSgst(sgst);
         sale.setIgst(0.0);
@@ -132,15 +170,9 @@ public class SaleService {
         Sale savedSale = saleRepository.save(sale);
 
         // Process line items & deduct stock
-        for (SaleItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
-
-            // Stock Validation
-            if (product.getStock() < itemReq.getQuantity()) {
-                throw new BusinessRuleException("Insufficient stock for product: " + product.getProductName() +
-                        " (Available: " + product.getStock() + ", Requested: " + itemReq.getQuantity() + ")");
-            }
+        for (int i = 0; i < request.getItems().size(); i++) {
+            SaleItemRequest itemReq = request.getItems().get(i);
+            Product product = productsToUpdate.get(i);
 
             // Deduct Stock
             product.setStock(product.getStock() - itemReq.getQuantity());
@@ -204,9 +236,11 @@ public class SaleService {
                 saleReq.setDiscount(req.getDiscount());
                 saleReq.setItems(req.getItems());
 
-                Sale created = createSaleInternal(saleReq, clientRef, req.getOfflineCreatedAt());
+                Sale created = transactionTemplate.execute(status ->
+                        createSaleInternal(saleReq, clientRef, req.getOfflineCreatedAt())
+                );
                 response.getResults().add(new SyncBatchResponse.SyncItemResult(
-                        clientRef, created.getId(), created.getBillNumber(), "SYNCED", null));
+                        clientRef, created != null ? created.getId() : null, created != null ? created.getBillNumber() : null, "SYNCED", null));
                 response.setSuccessCount(response.getSuccessCount() + 1);
 
             } catch (Exception ex) {

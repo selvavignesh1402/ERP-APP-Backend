@@ -53,7 +53,15 @@ public class InviteService {
         OrganizationInvite invite = inviteRepository.findByToken(token)
                 .orElseThrow(() -> new RuntimeException("Invalid or expired invite token"));
 
-        if (!invite.getStatus().equals("PENDING")) {
+        if (invite.getExpiresAt() != null && java.time.LocalDateTime.now().isAfter(invite.getExpiresAt())) {
+            if ("PENDING".equalsIgnoreCase(invite.getStatus())) {
+                invite.setStatus("EXPIRED");
+                inviteRepository.save(invite);
+            }
+            throw new RuntimeException("This invitation link has expired");
+        }
+
+        if (!"PENDING".equalsIgnoreCase(invite.getStatus())) {
             throw new RuntimeException("Invite has already been accepted or cancelled");
         }
 
@@ -74,8 +82,17 @@ public class InviteService {
     }
     
     public OrganizationInvite getInvite(String token) {
-        return inviteRepository.findByToken(token)
+        OrganizationInvite invite = inviteRepository.findByToken(token)
                 .orElseThrow(() -> new RuntimeException("Invalid or expired invite token"));
+
+        if (invite.getExpiresAt() != null && java.time.LocalDateTime.now().isAfter(invite.getExpiresAt())) {
+            if ("PENDING".equalsIgnoreCase(invite.getStatus())) {
+                invite.setStatus("EXPIRED");
+                inviteRepository.save(invite);
+            }
+        }
+
+        return invite;
     }
 
     public java.util.List<OrganizationInvite> getInvitesForOrg(Long organizationId) {

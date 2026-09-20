@@ -4,6 +4,7 @@ import com.riceerp.backend.dto.StockAdjustmentRequest;
 import com.riceerp.backend.entity.StockAdjustment;
 import com.riceerp.backend.service.StockAdjustmentService;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,11 +20,13 @@ public class StockAdjustmentController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('stock:adjust')")
     public StockAdjustment createAdjustment(@Valid @RequestBody StockAdjustmentRequest request) {
         return stockAdjustmentService.createAdjustment(request);
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('inventory:view')")
     public List<StockAdjustment> listAdjustments(@RequestParam(required = false) Long productId) {
         return stockAdjustmentService.listAdjustmentsByProduct(productId);
     }

@@ -6,6 +6,7 @@ import com.riceerp.backend.entity.VisitCheckIn;
 import com.riceerp.backend.service.VisitService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +24,7 @@ public class VisitController {
 
     // Salesperson: Check-in at a shop
     @PostMapping("/{scheduleId}/check-in")
+    @PreAuthorize("hasAuthority('beat-plan:view')")
     public ResponseEntity<VisitCheckIn> checkIn(
             @PathVariable Long scheduleId,
             @Valid @RequestBody CheckInRequestDto dto,
@@ -33,20 +35,23 @@ public class VisitController {
 
     // Salesperson: Complete visit (check-out with outcome)
     @PutMapping("/{checkInId}/check-out")
+    @PreAuthorize("hasAuthority('beat-plan:view')")
     public ResponseEntity<VisitCheckIn> checkOut(
             @PathVariable Long checkInId,
             @Valid @RequestBody CheckOutRequestDto dto) {
         return ResponseEntity.ok(visitService.checkOut(checkInId, dto));
     }
 
-    // Any role: Visit history for a customer
+    // Visit history for a customer
     @GetMapping("/customer/{customerId}/history")
+    @PreAuthorize("hasAuthority('beat-plan:view') or hasAuthority('customer:view')")
     public ResponseEntity<List<VisitCheckIn>> getVisitHistory(@PathVariable Long customerId) {
         return ResponseEntity.ok(visitService.getVisitHistory(customerId));
     }
 
-    // Manager/Salesperson: History for a salesperson
+    // History for a salesperson
     @GetMapping("/salesperson/{salespersonId}/history")
+    @PreAuthorize("hasAuthority('beat-plan:view') or hasAuthority('beat-plan:manage')")
     public ResponseEntity<List<VisitCheckIn>> getSalespersonHistory(@PathVariable Long salespersonId) {
         return ResponseEntity.ok(visitService.getSalespersonHistory(salespersonId));
     }
@@ -55,7 +60,6 @@ public class VisitController {
         if (auth == null || auth.getPrincipal() == null) {
             throw new RuntimeException("Not authenticated");
         }
-        // JwtFilter stores the user id (Long) as the authentication principal
         try {
             return Long.parseLong(auth.getPrincipal().toString());
         } catch (NumberFormatException e) {

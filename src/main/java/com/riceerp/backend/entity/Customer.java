@@ -46,6 +46,10 @@ public class Customer {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    @Version
+    @Column(name = "version")
+    private Long version = 0L;
+
     // Getters and Setters
     public Long getId() {
         return id;
@@ -135,4 +139,11 @@ public class Customer {
         this.organizationId = organizationId;
     }
 
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
 }

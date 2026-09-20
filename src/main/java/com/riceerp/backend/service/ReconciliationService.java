@@ -52,22 +52,31 @@ public class ReconciliationService {
                 .orElseThrow(() -> new NotFoundException("Purchase not found with id: " + purchaseId));
 
         SupplierInvoice invoice = invoiceService.getInvoiceById(invoiceId);
-        if (invoice.getPurchase() == null || !invoice.getPurchase().getId().equals(purchaseId)) {
-            throw new BusinessRuleException("Invoice " + invoice.getInvoiceNumber() + " is not linked to purchase " + purchaseId + ".");
+        if (invoice.getPurchase() == null) {
+            if (invoice.getSupplier() != null && purchase.getSupplier() != null &&
+                    !invoice.getSupplier().getId().equals(purchase.getSupplier().getId())) {
+                throw new BusinessRuleException("Invoice supplier (" + invoice.getSupplier().getSupplierName() +
+                        ") does not match Purchase Order supplier (" + purchase.getSupplier().getSupplierName() + ").");
+            }
+            invoice.setPurchase(purchase);
+            invoiceService.save(invoice);
+        } else if (!invoice.getPurchase().getId().equals(purchaseId)) {
+            throw new BusinessRuleException("Invoice " + invoice.getInvoiceNumber() + " is already linked to purchase order #" + invoice.getPurchase().getId() + ".");
         }
 
         List<PurchaseItem> poItems = purchaseItemRepository.findByPurchaseId(purchaseId);
         // An invoice may legitimately contain the same product on multiple lines;
-        // combine them instead of crashing on duplicate map keys.
-        Map<Long, SupplierInvoiceItem> invoiceByProduct = new java.util.HashMap<>();
+        // aggregate them in-memory without mutating managed JPA entities.
+        class AggregatedInvoiceItem {
+            double quantity = 0.0;
+            double unitPrice = 0.0;
+        }
+        Map<Long, AggregatedInvoiceItem> invoiceByProduct = new java.util.HashMap<>();
         for (SupplierInvoiceItem item : invoiceService.getInvoiceItems(invoiceId)) {
             Long productId = item.getProduct().getId();
-            SupplierInvoiceItem existing = invoiceByProduct.get(productId);
-            if (existing == null) {
-                invoiceByProduct.put(productId, item);
-            } else {
-                existing.setQuantity(existing.getQuantity() + item.getQuantity());
-            }
+            AggregatedInvoiceItem agg = invoiceByProduct.computeIfAbsent(productId, k -> new AggregatedInvoiceItem());
+            agg.quantity += item.getQuantity();
+            agg.unitPrice = item.getUnitPrice();
         }
         Map<Long, Double> receivedByProduct = goodsReceiptService.getReceivedQuantities(purchaseId);
 
@@ -77,10 +86,10 @@ public class ReconciliationService {
 
         for (PurchaseItem poItem : poItems) {
             Long productId = poItem.getProduct().getId();
-            SupplierInvoiceItem invItem = invoiceByProduct.get(productId);
+            AggregatedInvoiceItem invItem = invoiceByProduct.get(productId);
             double receivedQty = receivedByProduct.getOrDefault(productId, 0.0);
-            double billedQty = invItem != null ? invItem.getQuantity() : 0.0;
-            double billedPrice = invItem != null ? invItem.getUnitPrice() : 0.0;
+            double billedQty = invItem != null ? invItem.quantity : 0.0;
+            double billedPrice = invItem != null ? invItem.unitPrice : 0.0;
 
             boolean qtyMatch = billedQty <= poItem.getQuantity() + 1e-9;
             boolean priceMatch = Math.abs(billedPrice - poItem.getPrice()) < 1e-9;

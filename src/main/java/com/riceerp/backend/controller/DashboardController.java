@@ -1,6 +1,7 @@
 package com.riceerp.backend.controller;
 
 import com.riceerp.backend.service.DashboardService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,6 +19,7 @@ public class DashboardController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('dashboard:view')")
     public Map<String, Object> getDashboard() {
         return dashboardService.getDashboardMetrics();
     }
