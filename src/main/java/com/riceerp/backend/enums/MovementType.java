@@ -4,5 +4,6 @@ public enum MovementType {
     PURCHASE_RECEIPT,
     SALE,
     ADJUSTMENT,
-    RETURN
+    RETURN,
+    OPENING_STOCK
 }

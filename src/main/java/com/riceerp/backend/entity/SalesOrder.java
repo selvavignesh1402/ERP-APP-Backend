@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import com.riceerp.backend.enums.SalesOrderStatus;
 import org.hibernate.annotations.TenantId;
@@ -11,6 +13,9 @@ import java.util.List;
 @Entity
 @Table(name = "sales_orders")
 public class SalesOrder {
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version = 0L;
 
     @TenantId
     @Column(name = "organization_id")
@@ -41,16 +46,20 @@ public class SalesOrder {
     @Column(name = "status", nullable = false)
     private SalesOrderStatus status = SalesOrderStatus.CONFIRMED;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double subtotal = 0.0;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double discount = 0.0;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double taxAmount = 0.0;
 
-    @Column(name = "grand_total", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "grand_total", nullable = false, columnDefinition = "decimal(19,4)")
     private double grandTotal = 0.0;
 
     @Column(length = 500)

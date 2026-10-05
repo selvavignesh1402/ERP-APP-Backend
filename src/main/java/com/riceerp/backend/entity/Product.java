@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.Status;
@@ -8,6 +10,13 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "products")
 public class Product {
+    @Transient
+    private Double reservedStock;
+
+    public Double getReservedStock() { return reservedStock; }
+    public void setReservedStock(Double reservedStock) { this.reservedStock = reservedStock; }
+    /** Null means reservations have not been loaded; treating unknown as zero could oversell stock. */
+    public Double getAvailableStock() { return reservedStock == null ? null : Math.max(0, stock - reservedStock); }
 
     @TenantId
     @Column(name = "organization_id")
@@ -30,19 +39,24 @@ public class Product {
     @Column
     private String unit;
 
-    @Column(name = "purchase_price", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "purchase_price", nullable = false, columnDefinition = "decimal(19,4)")
     private double purchasePrice;
 
-    @Column(name = "selling_price", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "selling_price", nullable = false, columnDefinition = "decimal(19,4)")
     private double sellingPrice;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,6)")
     private double stock = 0.0;
 
-    @Column(name = "minimum_stock", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "minimum_stock", nullable = false, columnDefinition = "decimal(19,6)")
     private double minimumStock = 0.0;
 
-    @Column(name = "gst_rate", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "gst_rate", nullable = false, columnDefinition = "decimal(7,4)")
     private double gstRate = 0.0;
 
     @Column(name = "hsn_code")

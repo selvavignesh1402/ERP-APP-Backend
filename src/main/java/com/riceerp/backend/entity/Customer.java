@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.Status;
@@ -33,10 +35,12 @@ public class Customer {
     @Column(name = "gst_number")
     private String gstNumber;
 
-    @Column(name = "credit_limit", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "credit_limit", nullable = false, columnDefinition = "decimal(19,4)")
     private double creditLimit = 0.0;
 
-    @Column(name = "credit_balance", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "credit_balance", nullable = false, columnDefinition = "decimal(19,4)")
     private double creditBalance = 0.0;
 
     @Enumerated(EnumType.STRING)
@@ -47,7 +51,7 @@ public class Customer {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @Version
-    @Column(name = "version")
+    @Column(name = "version", nullable = false, columnDefinition = "bigint default 0")
     private Long version = 0L;
 
     // Getters and Setters

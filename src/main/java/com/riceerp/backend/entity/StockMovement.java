@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.MovementType;
@@ -26,7 +28,8 @@ public class StockMovement {
     @Column(name = "movement_type", nullable = false)
     private MovementType movementType;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,6)")
     private double quantity;
 
     @Column(name = "reference_id")

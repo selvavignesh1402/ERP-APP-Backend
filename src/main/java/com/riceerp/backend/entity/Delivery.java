@@ -11,6 +11,9 @@ import java.util.List;
 @Entity
 @Table(name = "deliveries")
 public class Delivery {
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version = 0L;
 
     @TenantId
     @Column(name = "organization_id")

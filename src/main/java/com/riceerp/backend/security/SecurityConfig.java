@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/health").permitAll()
                         .requestMatchers("/auth/me").authenticated()
                         // Public auth endpoints
                         .requestMatchers("/auth/login-password", "/auth/signup-password",
@@ -78,7 +79,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:http://localhost:*,http://127.0.0.1:*,http://192.168.*:*,http://10.*:*,exp://*}")
+    @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:}")
     private String allowedOrigins;
 
     @Bean

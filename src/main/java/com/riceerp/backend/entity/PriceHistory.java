@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PriceType;
@@ -26,7 +28,8 @@ public class PriceHistory {
     @Column(name = "price_type", nullable = false)
     private PriceType priceType;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double price;
 
     @Column(name = "effective_from", nullable = false)

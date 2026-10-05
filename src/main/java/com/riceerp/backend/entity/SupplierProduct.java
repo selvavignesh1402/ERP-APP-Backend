@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -27,13 +29,15 @@ public class SupplierProduct {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @Column(name = "purchase_price", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "purchase_price", nullable = false, columnDefinition = "decimal(19,4)")
     private double purchasePrice;
 
     @Column(name = "lead_time_days")
     private Integer leadTimeDays;
 
-    @Column(name = "min_order_qty")
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "min_order_qty", columnDefinition = "decimal(19,6)")
     private double minOrderQty;
 
     public Long getId() {

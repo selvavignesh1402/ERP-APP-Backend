@@ -4,7 +4,7 @@ VALUES
 (1, 'Default Retailer', NOW()),
 (2, 'Sam''s Shop', NOW()),
 (3, 'Royal Bakery & Confectionery', NOW())
-ON DUPLICATE KEY UPDATE name = VALUES(name);
+ON DUPLICATE KEY UPDATE id = id;
 
 -- Seed Suppliers (status maps to com.riceerp.backend.enums.Status)
 INSERT INTO suppliers (organization_id, id, supplier_name, phone, email, address, gst_number, rating, category, status, created_at)

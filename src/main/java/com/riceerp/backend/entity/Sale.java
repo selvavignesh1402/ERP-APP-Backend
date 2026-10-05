@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PaymentMode;
@@ -6,8 +8,18 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "sales")
+@Table(name = "sales", uniqueConstraints = @UniqueConstraint(
+        name = "uk_sale_org_client_reference", columnNames = {"organization_id", "client_reference_id"}))
 public class Sale {
+    // Response totals are calculated from persisted sale-linked payments on reads.
+    @Transient
+    private Double paidAmount;
+    @Transient
+    private Double balanceDue;
+    public Double getPaidAmount() { return paidAmount; }
+    public void setPaidAmount(Double amount) { paidAmount = amount; }
+    public Double getBalanceDue() { return balanceDue; }
+    public void setBalanceDue(Double amount) { balanceDue = amount; }
 
     @TenantId
     @Column(name = "organization_id")
@@ -34,22 +46,28 @@ public class Sale {
     @Column(name = "payment_mode", nullable = false)
     private PaymentMode paymentMode;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double total = 0.0;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double discount = 0.0;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double cgst = 0.0;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double sgst = 0.0;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double igst = 0.0;
 
-    @Column(name = "grand_total", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "grand_total", nullable = false, columnDefinition = "decimal(19,4)")
     private double grandTotal = 0.0;
 
     @Column(name = "client_reference_id", length = 64)
@@ -63,6 +81,19 @@ public class Sale {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "shop_name", updatable = false)
+    private String shopName;
+    @Column(name = "customer_phone", updatable = false)
+    private String customerPhone;
+    @Column(name = "customer_address", updatable = false)
+    private String customerAddress;
+    public String getShopName() { return shopName; }
+    public void setShopName(String value) { shopName = value; }
+    public String getCustomerPhone() { return customerPhone; }
+    public void setCustomerPhone(String value) { customerPhone = value; }
+    public String getCustomerAddress() { return customerAddress; }
+    public void setCustomerAddress(String value) { customerAddress = value; }
 
     // Getters and Setters
     public Long getId() {

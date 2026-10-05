@@ -4,10 +4,22 @@ import com.riceerp.backend.entity.Organization;
 import com.riceerp.backend.repository.OrganizationRepository;
 import com.riceerp.backend.service.PermissionService;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * Backstop that seeds the default permission matrix for organizations that were
+ * created before a permission existed. Organization creation already seeds
+ * permissions (AuthController, OrganizationController, MasterAdminController), so
+ * this only backfills older rows.
+ *
+ * <p>Restricted to dev/test/demo: production must not have rows written to
+ * role_permissions on every startup, outside the migration path reviewed by
+ * DatabaseProfileGuard.
+ */
+@Profile({"dev", "test", "demo"})
 @Component
 public class DataInitializer implements CommandLineRunner {
 

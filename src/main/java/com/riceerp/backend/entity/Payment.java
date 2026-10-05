@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PaymentMode;
@@ -7,8 +9,29 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "payments")
+@Table(name = "payments", uniqueConstraints = @UniqueConstraint(
+        name = "uk_payment_org_request", columnNames = {"organization_id", "client_reference_id"}))
 public class Payment {
+    @Column(name = "client_reference_id", length = 64)
+    private String clientReferenceId;
+
+    // Customer collections retain their original reference and explicitly allocate to invoices.
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "payment_sale_allocations", joinColumns = @JoinColumn(name = "payment_id"))
+    @MapKeyColumn(name = "sale_id")
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "amount", nullable = false, columnDefinition = "decimal(19,4)")
+    private java.util.Map<Long, Double> saleAllocations = new java.util.LinkedHashMap<>();
+
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "opening_balance_amount", columnDefinition = "decimal(19,4)")
+    private Double openingBalanceAmount;
+
+    public String getClientReferenceId() { return clientReferenceId; }
+    public void setClientReferenceId(String id) { clientReferenceId = id; }
+    public java.util.Map<Long, Double> getSaleAllocations() { return saleAllocations; }
+    public Double getOpeningBalanceAmount() { return openingBalanceAmount; }
+    public void setOpeningBalanceAmount(Double amount) { openingBalanceAmount = amount; }
 
     @TenantId
     @Column(name = "organization_id")
@@ -26,7 +49,8 @@ public class Payment {
     @Column(name = "reference_id", nullable = false)
     private Long referenceId;
 
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(nullable = false, columnDefinition = "decimal(19,4)")
     private double amount;
 
     @Enumerated(EnumType.STRING)

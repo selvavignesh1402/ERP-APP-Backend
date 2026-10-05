@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -26,13 +28,16 @@ public class GoodsReceiptItem {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @Column(name = "ordered_qty", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "ordered_qty", nullable = false, columnDefinition = "decimal(19,6)")
     private double orderedQty;
 
-    @Column(name = "received_qty", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "received_qty", nullable = false, columnDefinition = "decimal(19,6)")
     private double receivedQty;
 
-    @Column(name = "unit_price", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "unit_price", nullable = false, columnDefinition = "decimal(19,4)")
     private double unitPrice;
 
     public Long getId() {

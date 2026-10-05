@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import jakarta.persistence.*;
@@ -21,7 +23,8 @@ public class StockAdjustment {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
-    @Column(name = "quantity_change", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "quantity_change", nullable = false, columnDefinition = "decimal(19,6)")
     private double quantityChange;
 
     @Column(nullable = false)

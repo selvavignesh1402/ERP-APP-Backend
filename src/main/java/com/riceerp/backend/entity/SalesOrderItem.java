@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
@@ -32,10 +34,12 @@ public class SalesOrderItem {
     @Column(name = "remaining_quantity", nullable = false)
     private int remainingQuantity;
 
-    @Column(name = "unit_price", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "unit_price", nullable = false, columnDefinition = "decimal(19,4)")
     private double unitPrice;
 
-    @Column(name = "total_price", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "total_price", nullable = false, columnDefinition = "decimal(19,4)")
     private double totalPrice;
 
     public Long getId() {

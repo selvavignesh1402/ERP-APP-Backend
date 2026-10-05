@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PurchaseStatus;
@@ -28,7 +30,8 @@ public class Purchase {
     @Column(name = "purchase_date", nullable = false)
     private LocalDateTime purchaseDate = LocalDateTime.now();
 
-    @Column(name = "total_amount", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "total_amount", nullable = false, columnDefinition = "decimal(19,4)")
     private double totalAmount;
 
     @Enumerated(EnumType.STRING)

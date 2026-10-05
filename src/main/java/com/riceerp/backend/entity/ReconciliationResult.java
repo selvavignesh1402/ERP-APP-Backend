@@ -1,4 +1,6 @@
 package com.riceerp.backend.entity;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.ReconciliationStatus;
@@ -30,13 +32,16 @@ public class ReconciliationResult {
     @Column(nullable = false)
     private ReconciliationStatus status;
 
-    @Column(name = "amount_matched", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "amount_matched", nullable = false, columnDefinition = "decimal(19,4)")
     private double amountMatched;
 
-    @Column(name = "amount_on_purchase", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "amount_on_purchase", nullable = false, columnDefinition = "decimal(19,4)")
     private double amountOnPurchase;
 
-    @Column(name = "amount_on_invoice", nullable = false)
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "amount_on_invoice", nullable = false, columnDefinition = "decimal(19,4)")
     private double amountOnInvoice;
 
     @Column(columnDefinition = "TEXT")
