@@ -34,7 +34,7 @@ public class PurchaseItem {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double price;
+    private java.math.BigDecimal price = java.math.BigDecimal.ZERO;
 
     public Long getId() {
         return id;
@@ -68,12 +68,16 @@ public class PurchaseItem {
         this.quantity = quantity;
     }
 
-    public double getPrice() {
+    public java.math.BigDecimal getPrice() {
         return price;
     }
 
+
+    public void setPrice(java.math.BigDecimal price) {
+        this.price = price == null ? null : price.stripTrailingZeros();
+    }
     public void setPrice(double price) {
-        this.price = price;
+        this.price = java.math.BigDecimal.valueOf(price);
     }
 
     public Long getOrganizationId() {

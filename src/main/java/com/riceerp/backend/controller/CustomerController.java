@@ -1,6 +1,7 @@
 package com.riceerp.backend.controller;
 
 import com.riceerp.backend.dto.CustomerRequest;
+import com.riceerp.backend.dto.CustomerResponse;
 import com.riceerp.backend.entity.Customer;
 import com.riceerp.backend.service.CustomerService;
 import jakarta.validation.Valid;
@@ -11,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/customers")
+@RequestMapping({"/api/customers", "/customers"})
 public class CustomerController {
 
     private final CustomerService customerService;
@@ -22,32 +23,32 @@ public class CustomerController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('customer:create')")
-    public Customer createCustomer(@Valid @RequestBody CustomerRequest request) {
-        return customerService.createCustomer(request);
+    public CustomerResponse createCustomer(@Valid @RequestBody CustomerRequest request) {
+        return CustomerResponse.from(customerService.createCustomer(request));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('customer:view')")
-    public List<Customer> listCustomers(@RequestParam(required = false) String search) {
-        return customerService.listCustomers(search);
+    public List<CustomerResponse> listCustomers(@RequestParam(required = false) String search) {
+        return customerService.listCustomers(search).stream().map(CustomerResponse::from).toList();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('customer:view')")
-    public Customer getCustomer(@PathVariable Long id) {
-        return customerService.getCustomerById(id);
+    public CustomerResponse getCustomer(@PathVariable Long id) {
+        return CustomerResponse.from(customerService.getCustomerById(id));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('customer:edit')")
-    public Customer updateCustomer(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
-        return customerService.updateCustomer(id, request);
+    public CustomerResponse updateCustomer(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
+        return CustomerResponse.from(customerService.updateCustomer(id, request));
     }
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('customer:status')")
-    public Customer toggleStatus(@PathVariable Long id) {
-        return customerService.toggleStatus(id);
+    public CustomerResponse toggleStatus(@PathVariable Long id) {
+        return CustomerResponse.from(customerService.toggleStatus(id));
     }
 
     @GetMapping("/{id}/balance")
@@ -57,6 +58,7 @@ public class CustomerController {
         return Map.of(
                 "creditLimit", customer.getCreditLimit(),
                 "creditBalance", customer.getCreditBalance(),
-                "available", customer.getCreditLimit() - customer.getCreditBalance());
+                "available", customer.getCreditLimit()
+                        .subtract(customer.getCreditBalance()));
     }
 }

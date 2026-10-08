@@ -30,7 +30,7 @@ public class PriceHistory {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double price;
+    private java.math.BigDecimal price = java.math.BigDecimal.ZERO;
 
     @Column(name = "effective_from", nullable = false)
     private LocalDateTime effectiveFrom = LocalDateTime.now();
@@ -38,7 +38,7 @@ public class PriceHistory {
     public PriceHistory() {
     }
 
-    public PriceHistory(Product product, PriceType priceType, double price) {
+    public PriceHistory(Product product, PriceType priceType, java.math.BigDecimal price) {
         this.product = product;
         this.priceType = priceType;
         this.price = price;
@@ -69,11 +69,12 @@ public class PriceHistory {
         this.priceType = priceType;
     }
 
-    public double getPrice() {
+    public java.math.BigDecimal getPrice() {
         return price;
     }
 
-    public void setPrice(double price) {
+    public void setPrice(double price) { this.price = java.math.BigDecimal.valueOf(price); }
+    public void setPrice(java.math.BigDecimal price) {
         this.price = price;
     }
 

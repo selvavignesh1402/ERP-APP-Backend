@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/beat-plans")
+@RequestMapping({"/api/beat-plans", "/beat-plans"})
 public class BeatPlanController {
 
     private final BeatPlanService beatPlanService;
@@ -72,8 +72,11 @@ public class BeatPlanController {
     // Salesperson: Get today's route
     @GetMapping("/my-route")
     @PreAuthorize("hasAuthority('beat-plan:view')")
-    public ResponseEntity<List<TodayRouteDto>> getMyRoute(Authentication auth) {
-        return ResponseEntity.ok(beatPlanService.getTodayRoute(getCurrentUserId(auth)));
+    public ResponseEntity<List<TodayRouteDto>> getMyRoute(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            Authentication auth) {
+        LocalDate targetDate = date != null ? date : LocalDate.now();
+        return ResponseEntity.ok(beatPlanService.getRoute(getCurrentUserId(auth), targetDate));
     }
 
     // Salesperson / Manager: Get route for a specific date
@@ -82,7 +85,7 @@ public class BeatPlanController {
     public ResponseEntity<List<TodayRouteDto>> getRouteForSalesperson(
             @PathVariable Long salespersonId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(beatPlanService.getTodayRoute(salespersonId));
+        return ResponseEntity.ok(beatPlanService.getRoute(salespersonId, date != null ? date : LocalDate.now()));
     }
 
     // Manager: Live dashboard

@@ -49,9 +49,9 @@ public class MasterAdminController {
         Map<String, Object> summary = new HashMap<>();
         summary.put("totalOrganizations", totalOrgs);
         summary.put("totalUsers", totalUsers);
-        summary.put("activeOrganizations", totalOrgs);
-        summary.put("platformHealth", "OPERATIONAL");
-        summary.put("systemVersion", "v2.0-SaaS");
+        summary.put("activeOrganizations", null); // Activity tracking is not implemented.
+        summary.put("platformHealth", "NOT_MONITORED");
+        summary.put("systemVersion", null); // No build version is configured.
 
         return ResponseEntity.ok(summary);
     }

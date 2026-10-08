@@ -4,6 +4,13 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
 public class SalesOrderItemRequest {
+    private Double gstRate;
+    private boolean gstRateProvided;
+
+    public Double getGstRate() { return gstRate; }
+    public void setGstRate(Double value) { gstRate = value; gstRateProvided = true; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isGstRateProvided() { return gstRateProvided; }
 
     @NotNull(message = "Product ID is required")
     private Long productId;
@@ -12,7 +19,9 @@ public class SalesOrderItemRequest {
     private int quantity;
 
     @Min(value = 0, message = "Unit price cannot be negative")
-    private double unitPrice;
+    @NotNull(message = "Unit price cannot be null")
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 2, message = "Unit price must have at most 15 integer digits and two decimal places")
+    private java.math.BigDecimal unitPrice = java.math.BigDecimal.ZERO;
 
     public Long getProductId() {
         return productId;
@@ -30,11 +39,13 @@ public class SalesOrderItemRequest {
         this.quantity = quantity;
     }
 
-    public double getUnitPrice() {
+    public java.math.BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
-    public void setUnitPrice(double unitPrice) {
-        this.unitPrice = unitPrice;
+    public void setUnitPrice(double unitPrice) { this.unitPrice = java.math.BigDecimal.valueOf(unitPrice); }
+    @com.fasterxml.jackson.annotation.JsonSetter("unitPrice")
+    public void setUnitPrice(java.math.BigDecimal unitPrice) {
+        this.unitPrice = unitPrice == null ? null : unitPrice.stripTrailingZeros();
     }
 }

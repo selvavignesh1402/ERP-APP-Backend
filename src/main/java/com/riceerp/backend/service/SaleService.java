@@ -28,9 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,6 +42,7 @@ import java.util.UUID;
 public class SaleService {
 
     private static final Logger log = LoggerFactory.getLogger(SaleService.class);
+    private static final BigDecimal MAX_STORED_AMOUNT = new BigDecimal("999999999999999.9999");
 
     private final SaleRepository saleRepository;
     private final SaleItemRepository saleItemRepository;
@@ -64,15 +66,21 @@ public class SaleService {
         this.customerRepository = customerRepository;
         this.stockMovementService = stockMovementService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Sale createSale(SaleRequest request) {
         return createSaleInternal(request, null, null);
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Sale createSaleInternal(SaleRequest request, String clientReferenceId, LocalDateTime saleDate) {
+        return createSaleWithRates(request, clientReferenceId, saleDate, Map.of());
+    }
+
+    private Sale createSaleWithRates(SaleRequest request, String clientReferenceId, LocalDateTime saleDate,
+                                     Map<Long, Double> rateSnapshots) {
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new BusinessRuleException("Sale must contain at least one item.");
         }
@@ -82,7 +90,7 @@ public class SaleService {
             Optional<Sale> existing = saleRepository.findByClientReferenceId(clientReferenceId.trim());
             if (existing.isPresent()) {
                 log.info("Sale with clientReferenceId {} already exists. Skipping duplicate.", clientReferenceId);
-                return existing.get();
+                return withPaymentTotals(existing.get());
             }
         }
 
@@ -93,61 +101,105 @@ public class SaleService {
         }
 
         // Validate line items, fetch and verify products and prices
-        List<Product> productsToUpdate = new ArrayList<>();
-        double totalAmt = 0.0;
+        Map<Long, Product> productsToUpdate = new LinkedHashMap<>();
+        Map<Long, BigDecimal> requestedQuantities = new LinkedHashMap<>();
+        BigDecimal totalValue = BigDecimal.ZERO;
+        List<GstCalculator.Line> taxLines = new java.util.ArrayList<>();
 
         for (SaleItemRequest itemReq : request.getItems()) {
-            if (itemReq.getQuantity() <= 0) {
-                throw new BusinessRuleException("Item quantity must be greater than zero.");
+            if (itemReq == null || itemReq.getProductId() == null) {
+                throw new BusinessRuleException("Each sale item must specify a product.");
+            }
+            if (!Double.isFinite(itemReq.getQuantity()) || itemReq.getQuantity() <= 0) {
+                throw new BusinessRuleException("Item quantity must be finite and greater than zero.");
             }
 
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
-
-            // Stock validation
-            if (product.getStock() < itemReq.getQuantity()) {
-                throw new BusinessRuleException("Insufficient stock for product: " + product.getProductName() +
-                        " (Available: " + product.getStock() + ", Requested: " + itemReq.getQuantity() + ")");
-            }
+            Product product = productsToUpdate.computeIfAbsent(itemReq.getProductId(), id ->
+                    productRepository.findForStockUpdate(id)
+                            .orElseThrow(() -> new NotFoundException("Product not found with id: " + id)));
+            requestedQuantities.merge(itemReq.getProductId(), BigDecimal.valueOf(itemReq.getQuantity()), BigDecimal::add);
 
             // Price validation and defaulting
-            double effectivePrice = itemReq.getPrice();
-            if (effectivePrice <= 0) {
+            BigDecimal effectivePrice = itemReq.getPrice();
+            if (effectivePrice == null || effectivePrice.signum() < 0)
+                throw new BusinessRuleException("Item price must be non-negative and present.");
+            if (effectivePrice.signum() == 0) {
                 effectivePrice = product.getSellingPrice();
                 itemReq.setPrice(effectivePrice);
-            } else if (product.getPurchasePrice() > 0 && effectivePrice < product.getPurchasePrice()) {
+            } else if (product.getPurchasePrice().signum() > 0 && effectivePrice.compareTo(product.getPurchasePrice()) < 0) {
                 throw new BusinessRuleException("Selling price (₹" + effectivePrice + ") cannot be lower than cost price (₹" + product.getPurchasePrice() + ") for " + product.getProductName());
             }
 
-            totalAmt += itemReq.getQuantity() * effectivePrice;
-            productsToUpdate.add(product);
+            if (effectivePrice.signum() <= 0 || effectivePrice.compareTo(MAX_STORED_AMOUNT) > 0 || effectivePrice.stripTrailingZeros().scale() > 4)
+                throw new BusinessRuleException("Item price must be positive, fit the supported range, and have at most four decimal places.");
+            totalValue = totalValue.add(DecimalAmounts.value(itemReq.getQuantity()).multiply(effectivePrice));
+            Double rate = rateSnapshots.containsKey(product.getId()) ? rateSnapshots.get(product.getId()) : product.getGstRate();
+            if (itemReq.isGstRateProvided() && !java.util.Objects.equals(GstCalculator.rate(itemReq.getGstRate()), GstCalculator.rate(rate)))
+                throw new BusinessRuleException("Product GST changed. Refresh this product and review the invoice before submitting.");
+            taxLines.add(new GstCalculator.Line(DecimalAmounts.value(itemReq.getQuantity())
+                    .multiply(effectivePrice), rate));
         }
 
-        double discount = request.getDiscount();
-        if (discount < 0) {
-            throw new BusinessRuleException("Discount cannot be negative.");
-        }
-        if (discount > totalAmt) {
-            throw new BusinessRuleException("Discount (₹" + discount + ") cannot exceed total sale amount (₹" + totalAmt + ").");
+        // Validate the combined demand before writing any sale, credit, or stock changes.
+        for (Map.Entry<Long, BigDecimal> entry : requestedQuantities.entrySet()) {
+            Product product = productsToUpdate.get(entry.getKey());
+            if (!Double.isFinite(product.getStock()) ||
+                    BigDecimal.valueOf(product.getStock() - productRepository.reservedQuantity(product.getId())).compareTo(entry.getValue()) < 0) {
+                throw new BusinessRuleException("Insufficient stock for product: " + product.getProductName() +
+                        " (Unreserved available: " + Math.max(0, product.getStock() - productRepository.reservedQuantity(product.getId())) + ", Requested: " + entry.getValue() + ")");
+            }
         }
 
-        double netTotal = totalAmt - discount;
+        BigDecimal discountValue = request.getDiscount();
+        if (discountValue == null || discountValue.signum() < 0 ||
+                discountValue.compareTo(MAX_STORED_AMOUNT) > 0 || discountValue.stripTrailingZeros().scale() > 4) {
+            throw new BusinessRuleException("Discount must be zero or greater, with at most 15 integer digits and four decimal places.");
+        }
+        if (discountValue.compareTo(totalValue) > 0) {
+            throw new BusinessRuleException("Discount (₹" + discountValue + ") cannot exceed total sale amount (₹" + totalValue + ").");
+        }
 
-        // Taxes structures (CGST 2.5%, SGST 2.5%)
-        double cgst = Math.round(netTotal * 0.025 * 100.0) / 100.0;
-        double sgst = Math.round(netTotal * 0.025 * 100.0) / 100.0;
-        double grandTotal = Math.round((netTotal + cgst + sgst) * 100.0) / 100.0;
+        BigDecimal netTotal = totalValue.subtract(discountValue);
+
+        GstCalculator.Totals taxes = GstCalculator.calculate(taxLines, discountValue, request.getTaxType());
+        BigDecimal grandTotal = DecimalAmounts.cents(netTotal.add(taxes.total()));
+        if (DecimalAmounts.cents(totalValue).compareTo(MAX_STORED_AMOUNT) > 0 ||
+                grandTotal.compareTo(MAX_STORED_AMOUNT) > 0) {
+            throw new BusinessRuleException("Invoice total exceeds the supported maximum.");
+        }
+
+        PaymentMode saleMode;
+        try { saleMode = PaymentMode.valueOf(request.getPaymentMode().toUpperCase(java.util.Locale.ROOT)); }
+        catch (RuntimeException ex) { throw new BusinessRuleException("Invalid payment mode."); }
+        BigDecimal paidAmount = request.getPaidAmount() == null
+                ? (saleMode == PaymentMode.CREDIT ? BigDecimal.ZERO : grandTotal)
+                : request.getPaidAmount();
+        if (paidAmount.signum() < 0 || paidAmount.compareTo(grandTotal) > 0 ||
+                paidAmount.stripTrailingZeros().scale() > 2) {
+            throw new BusinessRuleException("Paid amount must be between zero and the invoice total, with at most two decimal places.");
+        }
+        if (saleMode != PaymentMode.CREDIT && paidAmount.compareTo(grandTotal) != 0) {
+            throw new BusinessRuleException("Use CREDIT with an initial payment for a partially paid sale.");
+        }
+        PaymentMode collectionMode = saleMode;
+        if (saleMode == PaymentMode.CREDIT && paidAmount.signum() > 0) {
+            try { collectionMode = PaymentMode.valueOf(request.getInitialPaymentMode().toUpperCase(java.util.Locale.ROOT)); }
+            catch (RuntimeException ex) { throw new BusinessRuleException("Select CASH, UPI or CARD for the initial payment."); }
+            if (collectionMode == PaymentMode.CREDIT) throw new BusinessRuleException("Initial payment cannot use CREDIT.");
+        }
+        BigDecimal balanceDue = grandTotal.subtract(paidAmount);
 
         // Credit limit validation logic
         if (PaymentMode.CREDIT.name().equalsIgnoreCase(request.getPaymentMode())) {
             if (customer == null) {
                 throw new BusinessRuleException("Customer lookup/registration is required for CREDIT payment sales.");
             }
-            if (customer.getCreditLimit() > 0 && customer.getCreditBalance() + grandTotal > customer.getCreditLimit()) {
+            BigDecimal newBalance = customer.getCreditBalance().add(balanceDue);
+            if (customer.getCreditLimit().signum() > 0 && newBalance.compareTo(customer.getCreditLimit()) > 0) {
                 throw new BusinessRuleException("Credit limit exceeded! Customer's remaining credit: "
-                        + (customer.getCreditLimit() - customer.getCreditBalance()));
+                        + customer.getCreditLimit().subtract(customer.getCreditBalance()).toPlainString());
             }
-            customer.setCreditBalance(customer.getCreditBalance() + grandTotal);
+            customer.setCreditBalance(newBalance);
             customerRepository.save(customer);
         }
 
@@ -156,51 +208,60 @@ public class SaleService {
         sale.setBillNumber("BILL-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase());
         sale.setCustomerName(customer != null ? customer.getCustomerName() : request.getCustomerName());
         sale.setCustomer(customer);
+        sale.setCustomerPhone(customer == null ? null : customer.getPhone());
+        sale.setCustomerAddress(customer == null ? null : customer.getAddress());
+        sale.setShopName(saleRepository.findShopName(com.riceerp.backend.security.TenantContext.getCurrentTenant()).orElse(null));
         sale.setPaymentMode(PaymentMode.valueOf(request.getPaymentMode().toUpperCase()));
-        sale.setTotal(Math.round(totalAmt * 100.0) / 100.0);
-        sale.setDiscount(Math.round(discount * 100.0) / 100.0);
-        sale.setCgst(cgst);
-        sale.setSgst(sgst);
-        sale.setIgst(0.0);
+        sale.setTotal(DecimalAmounts.cents(totalValue));
+        sale.setDiscount(DecimalAmounts.cents(discountValue));
+        sale.setTaxType(request.getTaxType());
+        sale.setCgst(taxes.cgst());
+        sale.setSgst(taxes.sgst());
+        sale.setIgst(taxes.igst());
         sale.setGrandTotal(grandTotal);
-        sale.setClientReferenceId(clientReferenceId);
+        sale.setClientReferenceId(clientReferenceId == null ? null : clientReferenceId.trim());
         sale.setSaleDate(saleDate != null ? saleDate : LocalDateTime.now());
         sale.setCreatedAt(LocalDateTime.now());
 
         Sale savedSale = saleRepository.save(sale);
 
-        // Process line items & deduct stock
-        for (int i = 0; i < request.getItems().size(); i++) {
-            SaleItemRequest itemReq = request.getItems().get(i);
-            Product product = productsToUpdate.get(i);
-
-            // Deduct Stock
-            product.setStock(product.getStock() - itemReq.getQuantity());
+        // Deduct once per product; retain separate invoice lines and their prices below.
+        for (Map.Entry<Long, BigDecimal> entry : requestedQuantities.entrySet()) {
+            Product product = productsToUpdate.get(entry.getKey());
+            product.setStock(BigDecimal.valueOf(product.getStock()).subtract(entry.getValue()).doubleValue());
             productRepository.save(product);
+            stockMovementService.record(product, MovementType.SALE, -entry.getValue().doubleValue(), savedSale.getId());
+        }
 
-            // Stock movement ledger
-            stockMovementService.record(product, MovementType.SALE, -itemReq.getQuantity(), savedSale.getId());
+        for (SaleItemRequest itemReq : request.getItems()) {
+            Product product = productsToUpdate.get(itemReq.getProductId());
 
             // Save SaleItem
             SaleItem saleItem = new SaleItem();
             saleItem.setSale(savedSale);
             saleItem.setProduct(product);
+            saleItem.setProductName(product.getProductName());
+            saleItem.setUnit(product.getUnit());
+            saleItem.setGstRate(GstCalculator.rate(rateSnapshots.containsKey(product.getId())
+                    ? rateSnapshots.get(product.getId()) : product.getGstRate()));
             saleItem.setQuantity(itemReq.getQuantity());
             saleItem.setPrice(itemReq.getPrice());
             saleItemRepository.save(saleItem);
         }
 
         // Auto-payment integration
-        if (!PaymentMode.CREDIT.name().equalsIgnoreCase(request.getPaymentMode())) {
+        if (paidAmount.signum() > 0) {
             Payment payment = new Payment();
             payment.setReferenceType(ReferenceType.SALE);
             payment.setReferenceId(savedSale.getId());
-            payment.setAmount(grandTotal);
-            payment.setPaymentMode(PaymentMode.valueOf(request.getPaymentMode().toUpperCase()));
+            payment.setAmount(paidAmount);
+            payment.setPaymentMode(collectionMode);
             payment.setPaymentDate(saleDate != null ? saleDate : LocalDateTime.now());
             paymentRepository.save(payment);
         }
 
+        savedSale.setPaidAmount(paidAmount);
+        savedSale.setBalanceDue(balanceDue);
         return savedSale;
     }
 
@@ -216,13 +277,16 @@ public class SaleService {
         for (OfflineSaleSyncRequest req : requests) {
             String clientRef = req.getClientReferenceId();
             try {
+                if (clientRef == null || clientRef.isBlank() || clientRef.length() > 64) {
+                    throw new BusinessRuleException("A valid offline sale reference is required");
+                }
                 // Check if already synced (Idempotency)
                 if (clientRef != null && !clientRef.trim().isEmpty()) {
                     Optional<Sale> existing = saleRepository.findByClientReferenceId(clientRef.trim());
                     if (existing.isPresent()) {
-                        Sale s = existing.get();
+                        Sale s = withPaymentTotals(existing.get());
                         response.getResults().add(new SyncBatchResponse.SyncItemResult(
-                                clientRef, s.getId(), s.getBillNumber(), "ALREADY_SYNCED", null));
+                                clientRef, s.getId(), s.getBillNumber(), "ALREADY_SYNCED", null).withSale(s));
                         response.setDuplicateCount(response.getDuplicateCount() + 1);
                         continue;
                     }
@@ -233,6 +297,9 @@ public class SaleService {
                 saleReq.setCustomerId(req.getCustomerId());
                 saleReq.setCustomerName(req.getCustomerName());
                 saleReq.setPaymentMode(req.getPaymentMode());
+                saleReq.setPaidAmount(req.getPaidAmount());
+                saleReq.setInitialPaymentMode(req.getInitialPaymentMode());
+                saleReq.setTaxType(req.getTaxType());
                 saleReq.setDiscount(req.getDiscount());
                 saleReq.setItems(req.getItems());
 
@@ -240,10 +307,22 @@ public class SaleService {
                         createSaleInternal(saleReq, clientRef, req.getOfflineCreatedAt())
                 );
                 response.getResults().add(new SyncBatchResponse.SyncItemResult(
-                        clientRef, created != null ? created.getId() : null, created != null ? created.getBillNumber() : null, "SYNCED", null));
+                        clientRef, created != null ? created.getId() : null, created != null ? created.getBillNumber() : null, "SYNCED", null).withSale(created));
                 response.setSuccessCount(response.getSuccessCount() + 1);
 
             } catch (Exception ex) {
+                // A concurrent sync may have committed this key while our transaction
+                // rolled back on uniqueness/version conflict. Return the durable sale.
+                if (clientRef != null && !clientRef.isBlank()) {
+                    Optional<Sale> committed = saleRepository.findByClientReferenceId(clientRef.trim());
+                    if (committed.isPresent()) {
+                        Sale existing = withPaymentTotals(committed.get());
+                        response.getResults().add(new SyncBatchResponse.SyncItemResult(clientRef,
+                                existing.getId(), existing.getBillNumber(), "ALREADY_SYNCED", null).withSale(existing));
+                        response.setDuplicateCount(response.getDuplicateCount() + 1);
+                        continue;
+                    }
+                }
                 log.error("Failed to sync offline sale with clientRef {}: {}", clientRef, ex.getMessage());
                 response.getResults().add(new SyncBatchResponse.SyncItemResult(
                         clientRef, null, null, "FAILED", ex.getMessage()));
@@ -255,12 +334,29 @@ public class SaleService {
     }
 
     public List<Sale> listSales() {
-        return saleRepository.findAll();
+        return saleRepository.findAll().stream().map(this::withPaymentTotals).toList();
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public com.riceerp.backend.dto.SalesSummary salesSummary() {
+        Long orgId = com.riceerp.backend.security.TenantContext.getCurrentTenant();
+        if (orgId == null || orgId <= 0) throw new org.springframework.security.access.AccessDeniedException("Select an organization first");
+        List<Sale> sales = saleRepository.findByOrganizationId(orgId).stream().map(this::withPaymentTotals).toList();
+        return com.riceerp.backend.dto.SalesSummary.fromSales(sales, LocalDateTime.now());
     }
 
     public Sale getSaleById(Long id) {
-        return saleRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Sale invoice not found with id: " + id));
+        return withPaymentTotals(saleRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Sale invoice not found with id: " + id)));
+    }
+
+    private Sale withPaymentTotals(Sale sale) {
+        BigDecimal paid = DecimalAmounts.cents(paymentRepository.sumByReference(ReferenceType.SALE, sale.getId())
+                .add(paymentRepository.sumAllocatedToSale(sale.getId())));
+        sale.setPaidAmount(paid);
+        sale.setBalanceDue(DecimalAmounts.cents(sale.getGrandTotal().subtract(paid))
+                .max(BigDecimal.ZERO));
+        return sale;
     }
 
     public List<SaleItem> getSaleItems(Long saleId) {
@@ -289,12 +385,12 @@ public class SaleService {
         List<SaleItem> items = saleItemRepository
                 .findByProductIdAndSaleDateBetweenOrderBySaleDateDesc(productId, startTime, endTime);
 
-        Map<LocalDate, double[]> daily = new TreeMap<>();
+        Map<LocalDate, BigDecimal[]> daily = new TreeMap<>();
         for (SaleItem item : items) {
             LocalDate date = item.getSale().getSaleDate().toLocalDate();
-            double[] acc = daily.computeIfAbsent(date, d -> new double[2]);
-            acc[0] += item.getQuantity();
-            acc[1] += item.getQuantity() * item.getPrice();
+            BigDecimal[] acc = daily.computeIfAbsent(date, d -> new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO});
+            acc[0] = acc[0].add(DecimalAmounts.value(item.getQuantity()));
+            acc[1] = acc[1].add(DecimalAmounts.value(item.getQuantity()).multiply(item.getPrice()));
         }
 
         long days = end.toEpochDay() - start.toEpochDay() + 1;
@@ -305,28 +401,46 @@ public class SaleService {
         resp.setUnit(product.getUnit());
         resp.setStartDate(start);
         resp.setEndDate(end);
-        resp.setTotalQuantitySold(Math.round(totalQuantity * 100.0) / 100.0);
-        resp.setTotalRevenue(Math.round(totalRevenue * 100.0) / 100.0);
+        resp.setTotalQuantitySold(DecimalAmounts.cents(totalQuantity));
+        resp.setTotalRevenue(DecimalAmounts.cents(totalRevenue));
         resp.setSalesCount(salesCount);
-        resp.setAverageDailySales(Math.round((totalQuantity / days) * 100.0) / 100.0);
+        resp.setAverageDailySales(DecimalAmounts.value(totalQuantity).divide(BigDecimal.valueOf(days), 2, java.math.RoundingMode.HALF_UP).doubleValue());
         daily.forEach((date, acc) -> resp.getBreakdown().add(
                 new ProductSalesHistoryResponse.DailyBreakdown(date,
-                        Math.round(acc[0] * 100.0) / 100.0,
-                        Math.round(acc[1] * 100.0) / 100.0)));
+                        DecimalAmounts.cents(acc[0]).doubleValue(),
+                        DecimalAmounts.cents(acc[1]).doubleValue())));
         return resp;
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public Sale createSaleFromDelivery(Long deliveryId, Long salesOrderId, Customer customer, List<SaleItemRequest> items, PaymentMode paymentMode, double discount) {
+        return createSaleFromDelivery(deliveryId, salesOrderId, customer, items, paymentMode, DecimalAmounts.value(discount),
+                com.riceerp.backend.enums.TaxType.INTRA_STATE, Map.of());
+    }
+
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public Sale createSaleFromDelivery(Long deliveryId, Long salesOrderId, Customer customer, List<SaleItemRequest> items,
+                                      PaymentMode paymentMode, BigDecimal discount, com.riceerp.backend.enums.TaxType taxType,
+                                      Map<Long, Double> rateSnapshots) {
         SaleRequest request = new SaleRequest();
         request.setCustomerId(customer != null ? customer.getId() : null);
         request.setCustomerName(customer != null ? customer.getCustomerName() : "Counter Sale");
         request.setPaymentMode(paymentMode != null ? paymentMode.name() : PaymentMode.CREDIT.name());
         request.setDiscount(discount);
+        request.setTaxType(taxType);
         request.setItems(items);
 
-        String clientRef = "DELIVERY-" + deliveryId + "-" + System.currentTimeMillis();
-        Sale sale = createSaleInternal(request, clientRef, LocalDateTime.now());
+        String clientRef = "DELIVERY-" + deliveryId;
+        Optional<Sale> previous = saleRepository.findByClientReferenceId(clientRef);
+        if (previous.isPresent()) {
+            Sale existing = previous.get();
+            if (!java.util.Objects.equals(existing.getDeliveryId(), deliveryId) ||
+                    !java.util.Objects.equals(existing.getSalesOrderId(), salesOrderId)) {
+                throw new BusinessRuleException("Delivery invoice reference conflicts with another sale.");
+            }
+            return withPaymentTotals(existing);
+        }
+        Sale sale = createSaleWithRates(request, clientRef, LocalDateTime.now(), rateSnapshots);
         sale.setDeliveryId(deliveryId);
         sale.setSalesOrderId(salesOrderId);
         return saleRepository.save(sale);

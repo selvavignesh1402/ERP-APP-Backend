@@ -18,6 +18,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import com.riceerp.backend.exception.BusinessRuleException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,18 @@ public class OrganizationController {
         this.permissionService = permissionService;
     }
 
+    // Receipt identity comes only from the selected, JWT-validated organization.
+    @GetMapping("/current")
+    public Map<String, Object> getCurrentOrganization() {
+        Long orgId = TenantContext.getCurrentTenant();
+        if (orgId == null || orgId <= 0) {
+            throw new org.springframework.security.access.AccessDeniedException("Select an organization first");
+        }
+        Organization organization = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new com.riceerp.backend.exception.NotFoundException("Organization not found"));
+        return Map.of("organizationId", orgId, "name", organization.getName());
+    }
+
     // List all organizations the logged-in user is part of
     @GetMapping("/my")
     public List<Map<String, Object>> getMyOrganizations(Authentication authentication) {
@@ -64,12 +79,15 @@ public class OrganizationController {
 
     // Create a new Organization
     @PostMapping("")
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ResponseEntity<?> createOrganization(@RequestBody Map<String, String> request, Authentication authentication) {
         Long userId = Long.parseLong(authentication.getPrincipal().toString());
         User user = userRepository.findById(userId).orElseThrow();
         
         Organization org = new Organization();
-        org.setName(request.get("name"));
+        String name = request.get("name");
+        if (name == null || name.isBlank()) throw new IllegalArgumentException("Organization name is required");
+        org.setName(name.trim());
         org = organizationRepository.save(org);
 
         OrganizationMembership membership = new OrganizationMembership();
@@ -100,7 +118,7 @@ public class OrganizationController {
         
         // Verify user has an active membership
         OrganizationMembership membership = membershipRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(userId, organizationId)
-                .orElseThrow(() -> new RuntimeException("User does not have an active membership in this organization"));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("User does not have an active membership in this organization"));
 
         User user = userRepository.findById(userId).orElseThrow();
         String token = JwtUtil.generateToken(userId, user.getPhoneNumber(), user.getPlatformRole(), organizationId, membership.getRole());
@@ -121,7 +139,7 @@ public class OrganizationController {
     public List<Map<String, Object>> getOrganizationMembers() {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
         List<OrganizationMembership> members = membershipRepository.findByOrganizationId(orgId);
@@ -141,10 +159,11 @@ public class OrganizationController {
     // Direct Staff Creation / Provisioning by Admin
     @PostMapping("/staff")
     @PreAuthorize("hasAuthority('member:manage')")
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ResponseEntity<?> createStaffDirectly(@RequestBody Map<String, String> request) {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
         String name = request.get("name");
@@ -152,15 +171,15 @@ public class OrganizationController {
         String password = request.get("password");
         String roleStr = request.get("role");
 
-        if (name == null || phone == null || roleStr == null) {
-            throw new RuntimeException("Name, phone number, and role are required");
+        if (name == null || name.isBlank() || phone == null || phone.isBlank() || roleStr == null) {
+            throw new BusinessRuleException("Name, phone number, and role are required");
         }
 
         OrgRole role;
         try {
             role = OrgRole.valueOf(roleStr.toUpperCase());
         } catch (Exception e) {
-            role = OrgRole.SALES;
+            throw new IllegalArgumentException("Unknown staff role");
         }
 
         // Find or create User
@@ -177,12 +196,12 @@ public class OrganizationController {
             // Check if already in this org
             Optional<OrganizationMembership> existing = membershipRepository.findByUserIdAndOrganizationId(user.getId(), orgId);
             if (existing.isPresent()) {
-                throw new RuntimeException("This staff member is already part of the shop!");
+                throw new BusinessRuleException("This staff member is already part of the shop!");
             }
         }
 
         Organization org = organizationRepository.findById(orgId)
-                .orElseThrow(() -> new RuntimeException("Organization not found"));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Organization not found"));
 
         OrganizationMembership membership = new OrganizationMembership();
         membership.setOrganization(org);
@@ -206,20 +225,22 @@ public class OrganizationController {
     // Update Staff Role
     @PutMapping("/members/{membershipId}/role")
     @PreAuthorize("hasAuthority('member:manage')")
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ResponseEntity<?> updateMemberRole(@PathVariable Long membershipId, @RequestBody Map<String, String> request) {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
+        organizationRepository.lockForPayment(orgId).orElseThrow(() -> new BusinessRuleException("Organization not found"));
         OrganizationMembership target = membershipRepository.findByIdAndOrganizationId(membershipId, orgId)
-                .orElseThrow(() -> new RuntimeException("Member not found in your organization"));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Member not found in your organization"));
 
         String newRoleStr = request.get("role");
         OrgRole newRole = OrgRole.valueOf(newRoleStr.toUpperCase());
 
         // Last Admin Guard: prevent demoting the last active ADMIN
-        if (target.getRole() == OrgRole.ADMIN && newRole != OrgRole.ADMIN) {
+        if (target.isActive() && target.getRole() == OrgRole.ADMIN && newRole != OrgRole.ADMIN) {
             assertNotLastAdmin(orgId, target.getId());
         }
 
@@ -232,19 +253,21 @@ public class OrganizationController {
     // Toggle Staff Active / Deactivated Status
     @PutMapping("/members/{membershipId}/status")
     @PreAuthorize("hasAuthority('member:manage')")
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ResponseEntity<?> toggleMemberStatus(@PathVariable Long membershipId, @RequestBody Map<String, Boolean> request) {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
+        organizationRepository.lockForPayment(orgId).orElseThrow(() -> new BusinessRuleException("Organization not found"));
         OrganizationMembership target = membershipRepository.findByIdAndOrganizationId(membershipId, orgId)
-                .orElseThrow(() -> new RuntimeException("Member not found in your organization"));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Member not found in your organization"));
 
         Boolean targetActive = request.get("isActive") != null ? request.get("isActive") : !target.isActive();
 
         // Last Admin Guard: prevent deactivating the last active ADMIN
-        if (target.getRole() == OrgRole.ADMIN && !targetActive) {
+        if (target.isActive() && target.getRole() == OrgRole.ADMIN && !targetActive) {
             assertNotLastAdmin(orgId, target.getId());
         }
 
@@ -257,22 +280,24 @@ public class OrganizationController {
     // Remove Staff Member from Organization
     @DeleteMapping("/members/{membershipId}")
     @PreAuthorize("hasAuthority('member:manage')")
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ResponseEntity<?> removeMember(@PathVariable Long membershipId, Authentication authentication) {
         Long currentUserId = Long.parseLong(authentication.getPrincipal().toString());
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
+        organizationRepository.lockForPayment(orgId).orElseThrow(() -> new BusinessRuleException("Organization not found"));
         OrganizationMembership target = membershipRepository.findByIdAndOrganizationId(membershipId, orgId)
-                .orElseThrow(() -> new RuntimeException("Member not found in your organization"));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Member not found in your organization"));
 
         if (target.getUser().getId().equals(currentUserId)) {
-            throw new RuntimeException("You cannot remove your own account from the organization");
+            throw new BusinessRuleException("You cannot remove your own account from the organization");
         }
 
         // Last Admin Guard: prevent deleting the last active ADMIN
-        if (target.getRole() == OrgRole.ADMIN) {
+        if (target.isActive() && target.getRole() == OrgRole.ADMIN) {
             assertNotLastAdmin(orgId, target.getId());
         }
 
@@ -287,7 +312,7 @@ public class OrganizationController {
         Long userId = Long.parseLong(authentication.getPrincipal().toString());
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No organization context found");
+            throw new BusinessRuleException("No organization context found");
         }
 
         String phone = request.get("phoneNumber");
@@ -313,7 +338,7 @@ public class OrganizationController {
     public List<Map<String, Object>> getPendingInvites() {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
         return inviteService.getInvitesForOrg(orgId).stream().map(inv -> {
@@ -336,7 +361,7 @@ public class OrganizationController {
     public ResponseEntity<?> cancelInvite(@PathVariable Long inviteId) {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No organization context found");
+            throw new BusinessRuleException("No organization context found");
         }
 
         inviteService.cancelInvite(inviteId, orgId);
@@ -382,7 +407,7 @@ public class OrganizationController {
     public ResponseEntity<?> getOrganizationPermissions() {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
         return ResponseEntity.ok(permissionService.getMatrixForOrg(orgId));
@@ -390,22 +415,14 @@ public class OrganizationController {
 
     @PutMapping("/permissions")
     @PreAuthorize("hasAuthority('member:manage')")
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public ResponseEntity<?> updateOrganizationPermissions(@RequestBody List<Map<String, Object>> updates) {
         Long orgId = TenantContext.getCurrentTenant();
         if (orgId == null) {
-            throw new RuntimeException("No active organization context found");
+            throw new BusinessRuleException("No active organization context found");
         }
 
-        for (Map<String, Object> u : updates) {
-            String roleStr = (String) u.get("role");
-            String permission = (String) u.get("permission");
-            Boolean allowed = (Boolean) u.get("allowed");
-
-            if (roleStr != null && permission != null && allowed != null) {
-                OrgRole role = OrgRole.valueOf(roleStr.toUpperCase());
-                permissionService.updatePermission(orgId, role, permission, allowed);
-            }
-        }
+        permissionService.updateMatrix(orgId, updates);
 
         return ResponseEntity.ok(Map.of("message", "Permissions updated successfully for your organization"));
     }
@@ -416,7 +433,7 @@ public class OrganizationController {
                 .count();
 
         if (activeAdminCount == 0) {
-            throw new RuntimeException("Cannot demote, deactivate, or delete the last active Admin of the organization.");
+            throw new BusinessRuleException("Cannot demote, deactivate, or delete the last active Admin of the organization.");
         }
     }
 }

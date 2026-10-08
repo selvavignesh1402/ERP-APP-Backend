@@ -58,10 +58,9 @@ public class JwtFilter extends OncePerRequestFilter {
                         return;
                     }
 
-                    String pRoleStr = JwtUtil.extractPlatformRole(token);
-                    PlatformRole platformRole = "MASTER_ADMIN".equals(pRoleStr) || user.getPlatformRole() == PlatformRole.MASTER_ADMIN
-                            ? PlatformRole.MASTER_ADMIN
-                            : PlatformRole.USER;
+                    // Authorization follows the current account, including demotions after token issue.
+                    PlatformRole platformRole = user.getPlatformRole() == PlatformRole.MASTER_ADMIN
+                            ? PlatformRole.MASTER_ADMIN : PlatformRole.USER;
 
                     Long orgId = JwtUtil.extractOrganizationId(token);
                     OrgRole activeOrgRole = null;

@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface PurchaseReturnRepository extends JpaRepository<PurchaseReturn, Long> {
     List<PurchaseReturn> findByPurchaseId(Long purchaseId);
+    List<PurchaseReturn> findByPurchaseIdAndOrganizationId(Long purchaseId, Long organizationId);
 }

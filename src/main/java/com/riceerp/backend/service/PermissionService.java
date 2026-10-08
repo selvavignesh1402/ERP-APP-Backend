@@ -15,24 +15,6 @@ public class PermissionService {
 
     private final RolePermissionRepository rolePermissionRepository;
     
-    // In-memory cache: "orgId:role" -> Set<String> permissions
-    private final Map<String, CachedPermissions> cache = new ConcurrentHashMap<>();
-    private static final long CACHE_TTL_MS = 60_000; // 60s TTL
-
-    private static class CachedPermissions {
-        final Set<String> permissions;
-        final long timestamp;
-
-        CachedPermissions(Set<String> permissions) {
-            this.permissions = permissions;
-            this.timestamp = System.currentTimeMillis();
-        }
-
-        boolean isExpired() {
-            return System.currentTimeMillis() - timestamp > CACHE_TTL_MS;
-        }
-    }
-
     public PermissionService(RolePermissionRepository rolePermissionRepository) {
         this.rolePermissionRepository = rolePermissionRepository;
     }
@@ -45,12 +27,6 @@ public class PermissionService {
         if (orgId == null) {
             // Global/Platform token context with no organization selected
             return Collections.emptySet();
-        }
-
-        String cacheKey = orgId + ":" + orgRole.name();
-        CachedPermissions cached = cache.get(cacheKey);
-        if (cached != null && !cached.isExpired()) {
-            return cached.permissions;
         }
 
         List<RolePermission> dbRows = rolePermissionRepository.findByOrganizationIdAndOrgRole(orgId, orgRole);
@@ -68,13 +44,13 @@ public class PermissionService {
             }
         }
 
-        cache.put(cacheKey, new CachedPermissions(Collections.unmodifiableSet(effective)));
-        return effective;
+        return Collections.unmodifiableSet(effective);
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void seedPermissionsForOrg(Long orgId) {
         if (orgId == null) return;
+        rolePermissionRepository.lockOrganization(orgId).orElseThrow(() -> new IllegalArgumentException("Organization not found"));
 
         for (OrgRole role : OrgRole.values()) {
             Set<String> defaults = DefaultPermissionMatrix.getDefaults(role);
@@ -84,16 +60,26 @@ public class PermissionService {
                         .findByOrganizationIdAndOrgRoleAndPermission(orgId, role, perm);
                 
                 if (existing.isEmpty()) {
+                    // Introducing visit mutation permission must not undo an existing
+                    // restriction on a role's access to field visits.
+                    if ("visit:execute".equals(perm)) {
+                        allowed = allowed && rolePermissionRepository
+                                .findByOrganizationIdAndOrgRoleAndPermission(orgId, role, "beat-plan:view")
+                                .map(RolePermission::isAllowed).orElse(true);
+                    }
                     rolePermissionRepository.save(new RolePermission(orgId, role, perm, allowed));
                 }
             }
         }
-        evictCacheForOrg(orgId);
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void updatePermission(Long orgId, OrgRole role, String permission, boolean allowed) {
-        if (orgId == null || role == null || permission == null) return;
+        if (orgId == null || role == null || !DefaultPermissionMatrix.ALL_PERMISSIONS.contains(permission))
+            throw new IllegalArgumentException("A known role and permission are required");
+        if (role == OrgRole.ADMIN && !allowed && "member:manage".equals(permission))
+            throw new IllegalArgumentException("Administrators must retain permission management");
+        rolePermissionRepository.lockOrganization(orgId).orElseThrow(() -> new IllegalArgumentException("Organization not found"));
 
         Optional<RolePermission> opt = rolePermissionRepository
                 .findByOrganizationIdAndOrgRoleAndPermission(orgId, role, permission);
@@ -106,7 +92,25 @@ public class PermissionService {
             rolePermissionRepository.save(new RolePermission(orgId, role, permission, allowed));
         }
 
-        evictCacheForOrg(orgId);
+    }
+
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public void updateMatrix(Long orgId, List<Map<String, Object>> updates) {
+        if (updates == null || updates.isEmpty()) throw new IllegalArgumentException("Permission updates are required");
+        // Validate the whole batch before mutating rows.
+        Set<String> seen = new HashSet<>();
+        for (Map<String, Object> update : updates) {
+            if (update == null || !(update.get("role") instanceof String role) ||
+                    !(update.get("permission") instanceof String permission) || !(update.get("allowed") instanceof Boolean))
+                throw new IllegalArgumentException("Each update requires role, permission and allowed");
+            OrgRole.valueOf(role.toUpperCase(Locale.ROOT));
+            if (!DefaultPermissionMatrix.ALL_PERMISSIONS.contains(permission) || !seen.add(role.toUpperCase(Locale.ROOT) + ":" + permission))
+                throw new IllegalArgumentException("Unknown or duplicate permission update");
+        }
+        rolePermissionRepository.lockOrganization(orgId).orElseThrow(() -> new IllegalArgumentException("Organization not found"));
+        for (Map<String, Object> update : updates)
+            updatePermission(orgId, OrgRole.valueOf(((String) update.get("role")).toUpperCase(Locale.ROOT)),
+                    (String) update.get("permission"), (Boolean) update.get("allowed"));
     }
 
     public Map<String, Map<String, Boolean>> getMatrixForOrg(Long orgId) {
@@ -127,7 +131,7 @@ public class PermissionService {
                     fromDb.put(rp.getPermission(), rp.isAllowed());
                 }
                 for (String perm : DefaultPermissionMatrix.ALL_PERMISSIONS) {
-                    roleMap.put(perm, fromDb.getOrDefault(perm, DefaultPermissionMatrix.isDefaultAllowed(role, perm)));
+                    roleMap.put(perm, fromDb.getOrDefault(perm, false));
                 }
             }
             matrix.put(role.name(), roleMap);
@@ -136,13 +140,5 @@ public class PermissionService {
         return matrix;
     }
 
-    public void evictCacheForOrg(Long orgId) {
-        if (orgId == null) {
-            cache.clear();
-            return;
-        }
-        for (OrgRole role : OrgRole.values()) {
-            cache.remove(orgId + ":" + role.name());
-        }
-    }
 }
+

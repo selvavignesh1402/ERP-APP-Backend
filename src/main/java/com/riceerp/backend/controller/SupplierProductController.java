@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.SupplierOptionResponse;
 import com.riceerp.backend.dto.SupplierProductRequest;
 import com.riceerp.backend.entity.SupplierProduct;
@@ -11,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/suppliers")
+@RequestMapping({"/api/suppliers", "/suppliers"})
 public class SupplierProductController {
 
     private final SupplierProductService supplierProductService;
@@ -22,21 +24,21 @@ public class SupplierProductController {
 
     @PostMapping("/{id}/products")
     @PreAuthorize("hasAuthority('supplier:edit')")
-    public SupplierProduct assignProduct(@PathVariable Long id, @Valid @RequestBody SupplierProductRequest request) {
-        return supplierProductService.assignProduct(id, request);
+    public SupplierProductResponse assignProduct(@PathVariable Long id, @Valid @RequestBody SupplierProductRequest request) {
+        return SupplierProductResponse.from(supplierProductService.assignProduct(id, request));
     }
 
     @PutMapping("/{supplierId}/products/{productId}")
     @PreAuthorize("hasAuthority('supplier:edit')")
-    public SupplierProduct updateProcurementData(@PathVariable Long supplierId,
+    public SupplierProductResponse updateProcurementData(@PathVariable Long supplierId,
                                                  @PathVariable Long productId,
                                                  @Valid @RequestBody SupplierProductRequest request) {
-        return supplierProductService.updateProcurementData(supplierId, productId, request);
+        return SupplierProductResponse.from(supplierProductService.updateProcurementData(supplierId, productId, request));
     }
 
     @GetMapping("/{id}/products")
     @PreAuthorize("hasAuthority('supplier:view')")
-    public List<SupplierProduct> listSupplierProducts(@PathVariable Long id) {
-        return supplierProductService.listSupplierProducts(id);
+    public List<SupplierProductResponse> listSupplierProducts(@PathVariable Long id) {
+        return supplierProductService.listSupplierProducts(id).stream().map(SupplierProductResponse::from).toList();
     }
 }

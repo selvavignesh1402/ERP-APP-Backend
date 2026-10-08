@@ -1,4 +1,5 @@
 package com.riceerp.backend.dto;
+import java.math.BigDecimal;
 
 import com.riceerp.backend.enums.VisitStatus;
 
@@ -12,14 +13,15 @@ public class TodayRouteDto {
     private String customerName;
     private String customerPhone;
     private String customerAddress;
-    private double creditLimit;
-    private double outstandingBalance;
+    private BigDecimal creditLimit = BigDecimal.ZERO;
+    private BigDecimal outstandingBalance = BigDecimal.ZERO;
     private int visitOrder;
     private VisitStatus status;
+    private LocalDate scheduledDate;
 
     // Last visit info
     private LocalDate lastVisitDate;
-    private double lastOrderAmount;
+    private BigDecimal lastOrderAmount = BigDecimal.ZERO;
     private String lastOrderDate;
     private double lastPaymentAmount;
     private String lastPaymentDate;
@@ -69,19 +71,19 @@ public class TodayRouteDto {
         this.customerAddress = customerAddress;
     }
 
-    public double getCreditLimit() {
+    public BigDecimal getCreditLimit() {
         return creditLimit;
     }
 
-    public void setCreditLimit(double creditLimit) {
+    public void setCreditLimit(BigDecimal creditLimit) {
         this.creditLimit = creditLimit;
     }
 
-    public double getOutstandingBalance() {
+    public BigDecimal getOutstandingBalance() {
         return outstandingBalance;
     }
 
-    public void setOutstandingBalance(double outstandingBalance) {
+    public void setOutstandingBalance(BigDecimal outstandingBalance) {
         this.outstandingBalance = outstandingBalance;
     }
 
@@ -101,6 +103,14 @@ public class TodayRouteDto {
         this.status = status;
     }
 
+    public LocalDate getScheduledDate() {
+        return scheduledDate;
+    }
+
+    public void setScheduledDate(LocalDate scheduledDate) {
+        this.scheduledDate = scheduledDate;
+    }
+
     public LocalDate getLastVisitDate() {
         return lastVisitDate;
     }
@@ -109,11 +119,11 @@ public class TodayRouteDto {
         this.lastVisitDate = lastVisitDate;
     }
 
-    public double getLastOrderAmount() {
+    public BigDecimal getLastOrderAmount() {
         return lastOrderAmount;
     }
 
-    public void setLastOrderAmount(double lastOrderAmount) {
+    public void setLastOrderAmount(BigDecimal lastOrderAmount) {
         this.lastOrderAmount = lastOrderAmount;
     }
 

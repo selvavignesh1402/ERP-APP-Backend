@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.DeliveryConfirmRequest;
 import com.riceerp.backend.dto.DeliveryCreateRequest;
 import com.riceerp.backend.dto.DeliveryFailRequest;
@@ -26,54 +28,54 @@ public class DeliveryController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('delivery:create') or hasRole('ADMIN') or hasRole('MANAGER')")
-    public ResponseEntity<Delivery> createDeliveryNote(@Valid @RequestBody DeliveryCreateRequest request) {
+    public ResponseEntity<DeliveryResponse> createDeliveryNote(@Valid @RequestBody DeliveryCreateRequest request) {
         Delivery delivery = deliveryService.createDeliveryNote(request);
-        return ResponseEntity.ok(delivery);
+        return ResponseEntity.ok(DeliveryResponse.from(delivery));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('delivery:view')")
-    public List<Delivery> listDeliveries(@RequestParam(required = false) DeliveryStatus status) {
-        return deliveryService.listDeliveries(status);
+    public List<DeliveryResponse> listDeliveries(@RequestParam(required = false) DeliveryStatus status) {
+        return deliveryService.listDeliveries(status).stream().map(DeliveryResponse::from).toList();
     }
 
     @GetMapping("/my-deliveries")
     @PreAuthorize("hasAuthority('delivery:view')")
-    public List<Delivery> getMyDeliveries(@RequestParam(required = false) DeliveryStatus status, Authentication authentication) {
+    public List<DeliveryResponse> getMyDeliveries(@RequestParam(required = false) DeliveryStatus status, Authentication authentication) {
         Long userId = Long.parseLong(authentication.getPrincipal().toString());
-        return deliveryService.getMyDeliveries(userId, status);
+        return deliveryService.getMyDeliveries(userId, status).stream().map(DeliveryResponse::from).toList();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('delivery:view')")
-    public Delivery getDeliveryById(@PathVariable Long id) {
-        return deliveryService.getDeliveryById(id);
+    public DeliveryResponse getDeliveryById(@PathVariable Long id) {
+        return DeliveryResponse.from(deliveryService.getDeliveryById(id));
     }
 
     @PutMapping("/{id}/start")
     @PreAuthorize("hasAuthority('delivery:confirm') or hasAuthority('delivery:fail')")
-    public Delivery startDelivery(@PathVariable Long id, Authentication authentication) {
+    public DeliveryResponse startDelivery(@PathVariable Long id, Authentication authentication) {
         Long userId = Long.parseLong(authentication.getPrincipal().toString());
         boolean isPrivileged = isPrivileged(authentication);
-        return deliveryService.startDelivery(id, userId, isPrivileged);
+        return DeliveryResponse.from(deliveryService.startDelivery(id, userId, isPrivileged));
     }
 
     @RequestMapping(value = "/{id}/confirm", method = {RequestMethod.POST, RequestMethod.PUT})
     @PreAuthorize("hasAuthority('delivery:confirm')")
-    public ResponseEntity<Delivery> confirmDelivery(@PathVariable Long id, @Valid @RequestBody DeliveryConfirmRequest request, Authentication authentication) {
+    public ResponseEntity<DeliveryResponse> confirmDelivery(@PathVariable Long id, @Valid @RequestBody DeliveryConfirmRequest request, Authentication authentication) {
         Long userId = Long.parseLong(authentication.getPrincipal().toString());
         boolean isPrivileged = isPrivileged(authentication);
         Delivery delivery = deliveryService.confirmDelivery(id, request, userId, isPrivileged);
-        return ResponseEntity.ok(delivery);
+        return ResponseEntity.ok(DeliveryResponse.from(delivery));
     }
 
     @RequestMapping(value = "/{id}/fail", method = {RequestMethod.POST, RequestMethod.PUT})
     @PreAuthorize("hasAuthority('delivery:fail')")
-    public ResponseEntity<Delivery> markDeliveryFailed(@PathVariable Long id, @Valid @RequestBody DeliveryFailRequest request, Authentication authentication) {
+    public ResponseEntity<DeliveryResponse> markDeliveryFailed(@PathVariable Long id, @Valid @RequestBody DeliveryFailRequest request, Authentication authentication) {
         Long userId = Long.parseLong(authentication.getPrincipal().toString());
         boolean isPrivileged = isPrivileged(authentication);
         Delivery delivery = deliveryService.markDeliveryFailed(id, request, userId, isPrivileged);
-        return ResponseEntity.ok(delivery);
+        return ResponseEntity.ok(DeliveryResponse.from(delivery));
     }
 
     private boolean isPrivileged(Authentication authentication) {

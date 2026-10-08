@@ -1,4 +1,5 @@
 package com.riceerp.backend.repository;
+import java.math.BigDecimal;
 
 import com.riceerp.backend.entity.Customer;
 import com.riceerp.backend.enums.Status;
@@ -11,6 +12,7 @@ import java.util.List;
 
 @Repository
 public interface CustomerRepository extends JpaRepository<Customer, Long> {
+    java.util.Optional<Customer> findByIdAndOrganizationId(Long id, Long organizationId);
     List<Customer> findByStatus(Status status);
 
     List<Customer> findByCustomerNameContainingIgnoreCase(String name);
@@ -18,8 +20,8 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
     List<Customer> findByPhoneContaining(String phone);
 
     @Query("SELECT COALESCE(SUM(c.creditBalance), 0) FROM Customer c WHERE c.status = 'ACTIVE' AND (:orgId IS NULL OR c.organizationId = :orgId)")
-    double sumActiveCreditBalanceByOrganizationId(@Param("orgId") Long orgId);
+    BigDecimal sumActiveCreditBalanceByOrganizationId(@Param("orgId") Long orgId);
 
     @Query("SELECT COALESCE(SUM(c.creditBalance), 0) FROM Customer c WHERE c.status = 'ACTIVE'")
-    double sumActiveCreditBalance();
+    BigDecimal sumActiveCreditBalance();
 }

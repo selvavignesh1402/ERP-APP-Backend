@@ -2,8 +2,15 @@ package com.riceerp.backend.dto;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Digits;
+import java.math.BigDecimal;
 
 public class PaymentRequest {
+    @jakarta.validation.constraints.NotBlank(message = "Payment request ID is required")
+    @jakarta.validation.constraints.Size(max = 64)
+    private String clientReferenceId;
+    public String getClientReferenceId() { return clientReferenceId; }
+    public void setClientReferenceId(String id) { clientReferenceId = id; }
     @NotNull(message = "Reference type is required")
     private String referenceType;
 
@@ -12,7 +19,8 @@ public class PaymentRequest {
 
     @NotNull(message = "Amount is required")
     @Positive(message = "Payment amount must be greater than zero")
-    private double amount;
+    @Digits(integer = 15, fraction = 2, message = "Payment amount must have at most 15 integer digits and two decimal places")
+    private BigDecimal amount;
 
     @NotNull(message = "Payment mode is required")
     private String paymentMode;
@@ -33,12 +41,13 @@ public class PaymentRequest {
         this.referenceId = referenceId;
     }
 
-    public double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
-    public void setAmount(double amount) {
-        this.amount = amount;
+    public void setAmount(BigDecimal amount) {
+        // Trailing zeroes do not change monetary precision (for example, 10.000 = 10).
+        this.amount = amount == null ? null : amount.stripTrailingZeros();
     }
 
     public String getPaymentMode() {

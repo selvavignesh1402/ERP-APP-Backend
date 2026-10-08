@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.entity.Product;
 import com.riceerp.backend.entity.StockMovement;
 import com.riceerp.backend.enums.Status;
@@ -16,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/inventory")
+@RequestMapping({"/api/inventory", "/inventory"})
 public class InventoryController {
 
     private final ProductRepository productRepository;
@@ -28,7 +30,7 @@ public class InventoryController {
     }
 
     @GetMapping("/low-stock")
-    @PreAuthorize("hasAuthority('inventory:view')")
+    @PreAuthorize("hasAuthority('inventory:view') or hasAuthority('report:view')")
     public List<Map<String, Object>> lowStock() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Product p : productRepository.findByStatus(Status.ACTIVE)) {
@@ -48,10 +50,19 @@ public class InventoryController {
 
     @GetMapping("/movements")
     @PreAuthorize("hasAuthority('inventory:view')")
-    public List<StockMovement> movements(
+    public List<StockMovementResponse> movements(
             @RequestParam(required = false) Long productId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
-        return stockMovementService.listMovements(productId, start, end);
+        return stockMovementService.listMovements(productId, start, end).stream().map(StockMovementResponse::from).toList();
     }
+
+    @GetMapping("/movements/page")
+    @PreAuthorize("hasAuthority('inventory:view') or hasAuthority('report:view')")
+    public MovementPageResponse movementPage(@RequestParam(required = false) Long beforeId,
+                                                          @RequestParam(defaultValue = "50") int size) {
+        var page = stockMovementService.movementPage(beforeId, size);
+        return new MovementPageResponse(page.items().stream().map(StockMovementResponse::from).toList(), page.nextBeforeId());
+    }
+    public record MovementPageResponse(List<StockMovementResponse> items, Long nextBeforeId) { }
 }

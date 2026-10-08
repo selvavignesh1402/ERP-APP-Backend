@@ -13,7 +13,8 @@ public class GoodsReceiptItemRequest {
 
     @NotNull(message = "Unit price is required")
     @Positive(message = "Unit price must be greater than zero")
-    private double unitPrice;
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4)
+    private java.math.BigDecimal unitPrice = java.math.BigDecimal.ZERO;
 
     public Long getProductId() {
         return productId;
@@ -31,11 +32,15 @@ public class GoodsReceiptItemRequest {
         this.receivedQty = receivedQty;
     }
 
-    public double getUnitPrice() {
+    public java.math.BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
+    @com.fasterxml.jackson.annotation.JsonSetter("unitPrice")
+    public void setUnitPrice(java.math.BigDecimal unitPrice) {
+        this.unitPrice = unitPrice == null ? null : unitPrice.stripTrailingZeros();
+    }
     public void setUnitPrice(double unitPrice) {
-        this.unitPrice = unitPrice;
+        this.unitPrice = java.math.BigDecimal.valueOf(unitPrice);
     }
 }

@@ -13,7 +13,8 @@ public class PurchaseItemRequest {
 
     @NotNull(message = "Price is required")
     @Positive(message = "Price must be greater than zero")
-    private double price;
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4)
+    private java.math.BigDecimal price;
 
     public Long getProductId() {
         return productId;
@@ -31,11 +32,15 @@ public class PurchaseItemRequest {
         this.quantity = quantity;
     }
 
-    public double getPrice() {
+    public java.math.BigDecimal getPrice() {
         return price;
     }
 
+    @com.fasterxml.jackson.annotation.JsonSetter("price")
+    public void setPrice(java.math.BigDecimal price) {
+        this.price = price == null ? null : price.stripTrailingZeros();
+    }
     public void setPrice(double price) {
-        this.price = price;
+        this.price = java.math.BigDecimal.valueOf(price);
     }
 }

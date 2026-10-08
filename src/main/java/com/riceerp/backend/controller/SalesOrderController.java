@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.SalesOrderRequest;
 import com.riceerp.backend.entity.SalesOrder;
 import com.riceerp.backend.enums.SalesOrderStatus;
@@ -25,7 +27,7 @@ public class SalesOrderController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('sales-order:create')")
-    public ResponseEntity<SalesOrder> createSalesOrder(@Valid @RequestBody SalesOrderRequest request, Authentication authentication) {
+    public ResponseEntity<SalesOrderResponse> createSalesOrder(@Valid @RequestBody SalesOrderRequest request, Authentication authentication) {
         if (request.getSalespersonId() == null && authentication != null) {
             try {
                 Long userId = Long.parseLong(authentication.getPrincipal().toString());
@@ -33,34 +35,34 @@ public class SalesOrderController {
             } catch (Exception ignored) {}
         }
         SalesOrder order = salesOrderService.createSalesOrder(request);
-        return ResponseEntity.ok(order);
+        return ResponseEntity.ok(SalesOrderResponse.from(order));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('sales-order:view')")
-    public List<SalesOrder> listSalesOrders(@RequestParam(required = false) SalesOrderStatus status,
+    public List<SalesOrderResponse> listSalesOrders(@RequestParam(required = false) SalesOrderStatus status,
                                             @RequestParam(required = false) Long customerId,
                                             @RequestParam(required = false) Long salespersonId) {
-        return salesOrderService.listSalesOrders(status, customerId, salespersonId);
+        return salesOrderService.listSalesOrders(status, customerId, salespersonId).stream().map(SalesOrderResponse::from).toList();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sales-order:view')")
-    public SalesOrder getSalesOrderById(@PathVariable Long id) {
-        return salesOrderService.getSalesOrderById(id);
+    public SalesOrderResponse getSalesOrderById(@PathVariable Long id) {
+        return SalesOrderResponse.from(salesOrderService.getSalesOrderById(id));
     }
 
     @PutMapping("/{id}/status")
-    @PreAuthorize("hasAuthority('sales-order:cancel')")
-    public SalesOrder updateStatus(@PathVariable Long id, @RequestParam SalesOrderStatus status) {
-        return salesOrderService.updateStatus(id, status);
+    @PreAuthorize("hasAuthority('delivery:create')")
+    public SalesOrderResponse updateStatus(@PathVariable Long id, @RequestParam SalesOrderStatus status) {
+        return SalesOrderResponse.from(salesOrderService.updateStatus(id, status));
     }
 
     @PutMapping("/{id}/cancel")
     @PreAuthorize("hasAuthority('sales-order:cancel')")
-    public SalesOrder cancelSalesOrder(@PathVariable Long id, @RequestBody(required = false) Map<String, String> request) {
+    public SalesOrderResponse cancelSalesOrder(@PathVariable Long id, @RequestBody(required = false) Map<String, String> request) {
         String reason = request != null ? request.get("reason") : null;
-        return salesOrderService.cancelSalesOrder(id, reason);
+        return SalesOrderResponse.from(salesOrderService.cancelSalesOrder(id, reason));
     }
 
     @GetMapping("/{id}/stock-check")

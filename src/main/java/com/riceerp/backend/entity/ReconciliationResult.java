@@ -34,15 +34,15 @@ public class ReconciliationResult {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "amount_matched", nullable = false, columnDefinition = "decimal(19,4)")
-    private double amountMatched;
+    private java.math.BigDecimal amountMatched = java.math.BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "amount_on_purchase", nullable = false, columnDefinition = "decimal(19,4)")
-    private double amountOnPurchase;
+    private java.math.BigDecimal amountOnPurchase = java.math.BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "amount_on_invoice", nullable = false, columnDefinition = "decimal(19,4)")
-    private double amountOnInvoice;
+    private java.math.BigDecimal amountOnInvoice = java.math.BigDecimal.ZERO;
 
     @Column(columnDefinition = "TEXT")
     private String details;
@@ -82,28 +82,34 @@ public class ReconciliationResult {
         this.status = status;
     }
 
-    public double getAmountMatched() {
+    public java.math.BigDecimal getAmountMatched() {
         return amountMatched;
     }
 
+    public void setAmountMatched(java.math.BigDecimal amountMatched) { this.amountMatched = amountMatched; }
+
     public void setAmountMatched(double amountMatched) {
-        this.amountMatched = amountMatched;
+        this.amountMatched = java.math.BigDecimal.valueOf(amountMatched);
     }
 
-    public double getAmountOnPurchase() {
+    public java.math.BigDecimal getAmountOnPurchase() {
         return amountOnPurchase;
     }
 
+    public void setAmountOnPurchase(java.math.BigDecimal amountOnPurchase) { this.amountOnPurchase = amountOnPurchase; }
+
     public void setAmountOnPurchase(double amountOnPurchase) {
-        this.amountOnPurchase = amountOnPurchase;
+        this.amountOnPurchase = java.math.BigDecimal.valueOf(amountOnPurchase);
     }
 
-    public double getAmountOnInvoice() {
+    public java.math.BigDecimal getAmountOnInvoice() {
         return amountOnInvoice;
     }
 
+    public void setAmountOnInvoice(java.math.BigDecimal amountOnInvoice) { this.amountOnInvoice = amountOnInvoice; }
+
     public void setAmountOnInvoice(double amountOnInvoice) {
-        this.amountOnInvoice = amountOnInvoice;
+        this.amountOnInvoice = java.math.BigDecimal.valueOf(amountOnInvoice);
     }
 
     public String getDetails() {

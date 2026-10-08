@@ -249,14 +249,15 @@ public class AuthController {
         return response;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @PostMapping("/signup-password")
     public Map<String, Object> signupWithPassword(@Valid @RequestBody SignupRequest request) {
         if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
-            throw new RuntimeException("Phone number already registered");
+            throw new com.riceerp.backend.exception.BusinessRuleException("Phone number already registered");
         }
 
         if (request.getPassword() == null || request.getPassword().trim().length() < 6) {
-            throw new RuntimeException("Password must be at least 6 characters long");
+            throw new com.riceerp.backend.exception.BusinessRuleException("Password must be at least 6 characters long");
         }
 
         User user = new User();
@@ -299,17 +300,19 @@ public class AuthController {
         return response;
     }
 
+    @org.springframework.transaction.annotation.Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     @PostMapping("/login-password")
-    public Map<String, Object> loginWithPassword(@RequestBody LoginRequest request) {
-        User user = userRepository.findByPhoneNumber(request.getPhoneNumber())
-                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+    public Map<String, Object> loginWithPassword(@Valid @RequestBody LoginRequest request) {
+        if (request.getPhoneNumber() == null || request.getPassword() == null) throw new org.springframework.security.authentication.BadCredentialsException("Invalid credentials");
+        User user = userRepository.findByPhoneNumberForUpdate(request.getPhoneNumber())
+                .orElseThrow(() -> new org.springframework.security.authentication.BadCredentialsException("Invalid credentials"));
 
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new org.springframework.security.authentication.BadCredentialsException("Invalid credentials");
         }
 
         if (!user.isActive()) {
-            throw new RuntimeException("Account has been deactivated. Contact your administrator.");
+            throw new org.springframework.security.authentication.DisabledException("Account has been deactivated. Contact your administrator.");
         }
 
         Long orgId = null;
@@ -373,24 +376,23 @@ public class AuthController {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        Long orgId = null;
+        // JwtFilter validates the selected token's organization and sets this context.
+        // Reading the profile must never select the first membership or create a shop.
+        Long orgId = com.riceerp.backend.security.TenantContext.getCurrentTenant();
         OrgRole orgRole = null;
         String roleName = user.getPlatformRole() != null ? user.getPlatformRole().name() : PlatformRole.USER.name();
 
-        if (user.getPlatformRole() == PlatformRole.MASTER_ADMIN) {
-            roleName = PlatformRole.MASTER_ADMIN.name();
-            List<OrganizationMembership> memberships = membershipRepository.findByUserId(user.getId())
-                    .stream().filter(OrganizationMembership::isActive).toList();
-            if (!memberships.isEmpty()) {
-                orgId = memberships.get(0).getOrganization().getId();
-                orgRole = memberships.get(0).getRole();
+        if (orgId != null) {
+            OrganizationMembership membership = membershipRepository
+                    .findByUserIdAndOrganizationIdAndIsActiveTrue(userId, orgId).orElse(null);
+            if (membership == null && user.getPlatformRole() != PlatformRole.MASTER_ADMIN) {
+                throw new org.springframework.security.access.AccessDeniedException("No active membership in selected organization");
             }
-        } else {
-            OrganizationMembership membership = getOrCreateDefaultMembership(user);
             if (membership != null) {
-                orgId = membership.getOrganization().getId();
                 orgRole = membership.getRole();
-                roleName = orgRole.name();
+                if (user.getPlatformRole() != PlatformRole.MASTER_ADMIN) {
+                    roleName = orgRole.name();
+                }
             }
         }
 

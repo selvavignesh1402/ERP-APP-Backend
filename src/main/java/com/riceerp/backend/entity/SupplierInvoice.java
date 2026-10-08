@@ -36,7 +36,7 @@ public class SupplierInvoice {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "total_amount", nullable = false, columnDefinition = "decimal(19,4)")
-    private double totalAmount;
+    private java.math.BigDecimal totalAmount = java.math.BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -85,12 +85,14 @@ public class SupplierInvoice {
         this.invoiceDate = invoiceDate;
     }
 
-    public double getTotalAmount() {
+    public java.math.BigDecimal getTotalAmount() {
         return totalAmount;
     }
 
+    public void setTotalAmount(java.math.BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+
     public void setTotalAmount(double totalAmount) {
-        this.totalAmount = totalAmount;
+        this.totalAmount = java.math.BigDecimal.valueOf(totalAmount);
     }
 
     public InvoiceStatus getStatus() {

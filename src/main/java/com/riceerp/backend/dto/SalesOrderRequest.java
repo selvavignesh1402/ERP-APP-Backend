@@ -5,8 +5,12 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.List;
+import java.math.BigDecimal;
 
 public class SalesOrderRequest {
+    private com.riceerp.backend.enums.TaxType taxType = com.riceerp.backend.enums.TaxType.INTRA_STATE;
+    public com.riceerp.backend.enums.TaxType getTaxType() { return taxType; }
+    public void setTaxType(com.riceerp.backend.enums.TaxType value) { taxType = value; }
 
     @NotNull(message = "Customer ID is required")
     private Long customerId;
@@ -15,7 +19,10 @@ public class SalesOrderRequest {
 
     private LocalDate expectedDeliveryDate;
 
-    private double discount = 0.0;
+    @NotNull(message = "Discount is required")
+    @jakarta.validation.constraints.PositiveOrZero(message = "Discount must be zero or greater")
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 2, message = "Discount must have at most 15 integer digits and two decimal places")
+    private BigDecimal discount = BigDecimal.ZERO;
 
     private String notes;
 
@@ -47,12 +54,12 @@ public class SalesOrderRequest {
         this.expectedDeliveryDate = expectedDeliveryDate;
     }
 
-    public double getDiscount() {
+    public BigDecimal getDiscount() {
         return discount;
     }
 
-    public void setDiscount(double discount) {
-        this.discount = discount;
+    public void setDiscount(BigDecimal discount) {
+        this.discount = discount == null ? null : discount.stripTrailingZeros();
     }
 
     public String getNotes() {

@@ -1,13 +1,25 @@
 package com.riceerp.backend.dto;
 
 public class ReconciliationItemDetail {
+    private double previouslyBilledQty;
+    private double availableReceivedQty;
+    private java.math.BigDecimal orderedAmount = java.math.BigDecimal.ZERO;
+    private java.math.BigDecimal billedAmount = java.math.BigDecimal.ZERO;
+    public double getPreviouslyBilledQty() { return previouslyBilledQty; }
+    public void setPreviouslyBilledQty(double value) { previouslyBilledQty = value; }
+    public double getAvailableReceivedQty() { return availableReceivedQty; }
+    public void setAvailableReceivedQty(double value) { availableReceivedQty = value; }
+    public java.math.BigDecimal getOrderedAmount() { return orderedAmount; }
+    public void setOrderedAmount(java.math.BigDecimal value) { orderedAmount = value; }
+    public java.math.BigDecimal getBilledAmount() { return billedAmount; }
+    public void setBilledAmount(java.math.BigDecimal value) { billedAmount = value; }
     private Long productId;
     private String productName;
     private double orderedQty;
     private double receivedQty;
     private double billedQty;
-    private double orderedPrice;
-    private double billedPrice;
+    private java.math.BigDecimal orderedPrice = java.math.BigDecimal.ZERO;
+    private java.math.BigDecimal billedPrice = java.math.BigDecimal.ZERO;
     private boolean qtyMatch;
     private boolean priceMatch;
 
@@ -51,19 +63,19 @@ public class ReconciliationItemDetail {
         this.billedQty = billedQty;
     }
 
-    public double getOrderedPrice() {
+    public java.math.BigDecimal getOrderedPrice() {
         return orderedPrice;
     }
 
-    public void setOrderedPrice(double orderedPrice) {
+    public void setOrderedPrice(java.math.BigDecimal orderedPrice) {
         this.orderedPrice = orderedPrice;
     }
 
-    public double getBilledPrice() {
+    public java.math.BigDecimal getBilledPrice() {
         return billedPrice;
     }
 
-    public void setBilledPrice(double billedPrice) {
+    public void setBilledPrice(java.math.BigDecimal billedPrice) {
         this.billedPrice = billedPrice;
     }
 

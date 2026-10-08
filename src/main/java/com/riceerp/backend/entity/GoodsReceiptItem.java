@@ -38,7 +38,7 @@ public class GoodsReceiptItem {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "unit_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double unitPrice;
+    private java.math.BigDecimal unitPrice = java.math.BigDecimal.ZERO;
 
     public Long getId() {
         return id;
@@ -80,12 +80,16 @@ public class GoodsReceiptItem {
         this.receivedQty = receivedQty;
     }
 
-    public double getUnitPrice() {
+    public java.math.BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
+
+    public void setUnitPrice(java.math.BigDecimal unitPrice) {
+        this.unitPrice = unitPrice == null ? null : unitPrice.stripTrailingZeros();
+    }
     public void setUnitPrice(double unitPrice) {
-        this.unitPrice = unitPrice;
+        this.unitPrice = java.math.BigDecimal.valueOf(unitPrice);
     }
 
     public Long getOrganizationId() {

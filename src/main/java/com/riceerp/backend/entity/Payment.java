@@ -7,6 +7,7 @@ import com.riceerp.backend.enums.PaymentMode;
 import com.riceerp.backend.enums.ReferenceType;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "payments", uniqueConstraints = @UniqueConstraint(
@@ -21,17 +22,18 @@ public class Payment {
     @MapKeyColumn(name = "sale_id")
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "amount", nullable = false, columnDefinition = "decimal(19,4)")
-    private java.util.Map<Long, Double> saleAllocations = new java.util.LinkedHashMap<>();
+    private java.util.Map<Long, BigDecimal> saleAllocations = new java.util.LinkedHashMap<>();
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "opening_balance_amount", columnDefinition = "decimal(19,4)")
-    private Double openingBalanceAmount;
+    private BigDecimal openingBalanceAmount;
 
     public String getClientReferenceId() { return clientReferenceId; }
     public void setClientReferenceId(String id) { clientReferenceId = id; }
-    public java.util.Map<Long, Double> getSaleAllocations() { return saleAllocations; }
-    public Double getOpeningBalanceAmount() { return openingBalanceAmount; }
-    public void setOpeningBalanceAmount(Double amount) { openingBalanceAmount = amount; }
+    public java.util.Map<Long, BigDecimal> getSaleAllocations() { return saleAllocations; }
+    public BigDecimal getOpeningBalanceAmount() { return openingBalanceAmount; }
+    public void setOpeningBalanceAmount(BigDecimal amount) { openingBalanceAmount = amount; }
+    public void setOpeningBalanceAmount(double amount) { openingBalanceAmount = BigDecimal.valueOf(amount); }
 
     @TenantId
     @Column(name = "organization_id")
@@ -51,7 +53,7 @@ public class Payment {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double amount;
+    private BigDecimal amount = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_mode", nullable = false)
@@ -85,11 +87,15 @@ public class Payment {
         this.referenceId = referenceId;
     }
 
-    public double getAmount() {
+    public BigDecimal getAmount() {
         return amount;
     }
 
     public void setAmount(double amount) {
+        this.amount = BigDecimal.valueOf(amount);
+    }
+
+    public void setAmount(BigDecimal amount) {
         this.amount = amount;
     }
 

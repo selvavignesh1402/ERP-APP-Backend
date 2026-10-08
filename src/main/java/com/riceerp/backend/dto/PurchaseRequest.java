@@ -15,7 +15,7 @@ public class PurchaseRequest {
     @Valid
     private List<PurchaseItemRequest> items;
 
-    // Optional fields (invoiceNumber, status) — service forces its own defaults.
+    // Status is accepted for older clients but ignored: creation always uses DRAFT.
     private String invoiceNumber;
     private PurchaseStatus status;
 

@@ -1,4 +1,5 @@
 package com.riceerp.backend.dto;
+import java.math.BigDecimal;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -16,7 +17,9 @@ public class CustomerRequest {
     private String gstNumber;
 
     @PositiveOrZero(message = "Credit limit must be zero or greater")
-    private double creditLimit;
+    @jakarta.validation.constraints.NotNull(message = "Credit limit is required")
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4, message = "Credit limit must fit 15 integer and 4 decimal digits")
+    private BigDecimal creditLimit = BigDecimal.ZERO;
 
     public String getCustomerName() {
         return customerName;
@@ -58,11 +61,11 @@ public class CustomerRequest {
         this.gstNumber = gstNumber;
     }
 
-    public double getCreditLimit() {
+    public BigDecimal getCreditLimit() {
         return creditLimit;
     }
 
-    public void setCreditLimit(double creditLimit) {
+    public void setCreditLimit(BigDecimal creditLimit) {
         this.creditLimit = creditLimit;
     }
 }

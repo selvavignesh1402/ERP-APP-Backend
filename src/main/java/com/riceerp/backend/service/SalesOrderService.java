@@ -15,6 +15,16 @@ import com.riceerp.backend.repository.ProductRepository;
 import com.riceerp.backend.repository.SalesOrderItemRepository;
 import com.riceerp.backend.repository.SalesOrderRepository;
 import com.riceerp.backend.repository.UserRepository;
+import com.riceerp.backend.repository.OrganizationRepository;
+import com.riceerp.backend.repository.DeliveryRepository;
+import com.riceerp.backend.security.TenantContext;
+import com.riceerp.backend.enums.DeliveryStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.annotation.Isolation;
+import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,75 +42,120 @@ public class SalesOrderService {
     private final CustomerRepository customerRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final OrganizationRepository organizations;
+    private final DeliveryRepository deliveries;
 
     public SalesOrderService(SalesOrderRepository salesOrderRepository,
                              SalesOrderItemRepository salesOrderItemRepository,
                              CustomerRepository customerRepository,
                              ProductRepository productRepository,
-                             UserRepository userRepository) {
+                             UserRepository userRepository, OrganizationRepository organizations, DeliveryRepository deliveries) {
         this.salesOrderRepository = salesOrderRepository;
         this.salesOrderItemRepository = salesOrderItemRepository;
         this.customerRepository = customerRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
+        this.organizations = organizations;
+        this.deliveries = deliveries;
     }
 
-    @Transactional
+    private Long tenant() {
+        Long orgId = TenantContext.getCurrentTenant();
+        if (orgId == null || orgId <= 0) throw new AccessDeniedException("Select an organization first");
+        return orgId;
+    }
+
+    private void lockMutations() {
+        // Same lock as dispatch/confirmation: cancellation cannot pass a stale check.
+        organizations.lockForDelivery(tenant()).orElseThrow(() -> new NotFoundException("Organization not found"));
+    }
+
+    private boolean hasActiveDelivery(Long id) {
+        return deliveries.findBySalesOrderIdAndOrganizationId(id, tenant()).stream().anyMatch(note ->
+                note.getStatus() == DeliveryStatus.ASSIGNED || note.getStatus() == DeliveryStatus.OUT_FOR_DELIVERY);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SalesOrder createSalesOrder(SalesOrderRequest request) {
+        lockMutations();
         if (request.getItems() == null || request.getItems().isEmpty()) {
             throw new BusinessRuleException("Sales order must contain at least one item.");
         }
 
-        Customer customer = customerRepository.findById(request.getCustomerId())
+        Customer customer = customerRepository.findByIdAndOrganizationId(request.getCustomerId(), tenant())
                 .orElseThrow(() -> new NotFoundException("Customer not found with id: " + request.getCustomerId()));
 
         User salesperson = null;
         if (request.getSalespersonId() != null) {
-            salesperson = userRepository.findById(request.getSalespersonId()).orElse(null);
+            salesperson = userRepository.findActiveOrganizationUser(request.getSalespersonId(), tenant())
+                    .orElseThrow(() -> new BusinessRuleException("Salesperson must be an active member of this shop"));
         }
 
-        double subtotal = 0.0;
+        BigDecimal subtotalValue = BigDecimal.ZERO;
+        Set<Long> productIds = new HashSet<>();
         List<SalesOrderItem> orderItems = new ArrayList<>();
 
         SalesOrder order = new SalesOrder();
-        order.setOrderNumber("SO-" + System.currentTimeMillis());
+        order.setOrderNumber("SO-" + UUID.randomUUID());
         order.setCustomer(customer);
         order.setSalesperson(salesperson);
         order.setOrderDate(LocalDateTime.now());
         order.setExpectedDeliveryDate(request.getExpectedDeliveryDate());
         order.setStatus(SalesOrderStatus.CONFIRMED);
-        order.setDiscount(request.getDiscount());
         order.setNotes(request.getNotes());
         order.setCreatedAt(LocalDateTime.now());
         order.setUpdatedAt(LocalDateTime.now());
 
         for (SalesOrderItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
+            if (itemReq == null || itemReq.getProductId() == null || !productIds.add(itemReq.getProductId()))
+                throw new BusinessRuleException("Each order product must appear exactly once.");
+            if (itemReq.getQuantity() <= 0 || itemReq.getUnitPrice() == null || itemReq.getUnitPrice().signum() < 0)
+                throw new BusinessRuleException("Order quantities must be positive and prices finite and non-negative.");
+            Product product = productRepository.findForStockUpdate(itemReq.getProductId())
                     .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
 
-            double price = itemReq.getUnitPrice() > 0 ? itemReq.getUnitPrice() : product.getSellingPrice();
-            double itemTotal = itemReq.getQuantity() * price;
-            subtotal += itemTotal;
+            double available = product.getStock() - productRepository.reservedQuantity(product.getId());
+            if (available < itemReq.getQuantity())
+                throw new BusinessRuleException("Insufficient unreserved stock for " + product.getProductName() + ". Available: " + Math.max(0, available));
+
+            BigDecimal unitPrice = itemReq.getUnitPrice().signum() > 0 ? OrderBilling.money(itemReq.getUnitPrice()) : OrderBilling.money(product.getSellingPrice());
+            if (unitPrice.signum() <= 0) throw new BusinessRuleException("Order price must be greater than zero.");
+            BigDecimal itemAmount = unitPrice.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
+            subtotalValue = subtotalValue.add(itemAmount);
 
             SalesOrderItem orderItem = new SalesOrderItem();
             orderItem.setSalesOrder(order);
             orderItem.setProduct(product);
+            Double gstRate = GstCalculator.rate(product.getGstRate());
+            if (itemReq.isGstRateProvided() && !java.util.Objects.equals(GstCalculator.rate(itemReq.getGstRate()), gstRate))
+                throw new BusinessRuleException("Product GST changed. Refresh this product and review the order before submitting.");
+            orderItem.setGstRate(gstRate);
             orderItem.setOrderedQuantity(itemReq.getQuantity());
             orderItem.setPackedQuantity(0);
             orderItem.setDeliveredQuantity(0);
             orderItem.setRemainingQuantity(itemReq.getQuantity());
-            orderItem.setUnitPrice(price);
-            orderItem.setTotalPrice(itemTotal);
+            orderItem.setUnitPrice(unitPrice);
+            orderItem.setTotalPrice(itemAmount);
 
             orderItems.add(orderItem);
         }
 
-        double netTotal = Math.max(0.0, subtotal - request.getDiscount());
-        double taxAmount = netTotal * 0.05; // 5% GST (2.5% CGST + 2.5% SGST)
-        double grandTotal = netTotal + taxAmount;
+        BigDecimal discount = OrderBilling.money(request.getDiscount());
+        if (discount.signum() < 0 || discount.compareTo(subtotalValue) > 0)
+            throw new BusinessRuleException("Order discount must be between zero and the subtotal.");
+        BigDecimal netTotal = subtotalValue.subtract(discount);
+        BigDecimal taxValue = GstCalculator.calculate(orderItems.stream().map(item -> new GstCalculator.Line(
+                item.getUnitPrice().multiply(BigDecimal.valueOf(item.getOrderedQuantity())),
+                item.getGstRate())).toList(), discount, request.getTaxType()).total();
+        BigDecimal grandTotal = netTotal.add(taxValue);
+        BigDecimal maximum = new BigDecimal("999999999999999.9999");
+        if (subtotalValue.compareTo(maximum) > 0 || grandTotal.compareTo(maximum) > 0)
+            throw new BusinessRuleException("Order total is too large.");
 
-        order.setSubtotal(subtotal);
-        order.setTaxAmount(taxAmount);
+        order.setSubtotal(subtotalValue);
+        order.setDiscount(discount);
+        order.setTaxType(request.getTaxType());
+        order.setTaxAmount(taxValue);
         order.setGrandTotal(grandTotal);
         order.setItems(orderItems);
 
@@ -108,7 +163,7 @@ public class SalesOrderService {
     }
 
     public SalesOrder getSalesOrderById(Long id) {
-        return salesOrderRepository.findById(id)
+        return salesOrderRepository.findByIdAndOrganizationId(id, tenant())
                 .orElseThrow(() -> new NotFoundException("Sales order not found with id: " + id));
     }
 
@@ -125,19 +180,30 @@ public class SalesOrderService {
         return salesOrderRepository.findAllByOrderByOrderDateDesc();
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SalesOrder updateStatus(Long id, SalesOrderStatus newStatus) {
+        lockMutations();
         SalesOrder order = getSalesOrderById(id);
+        boolean valid = (order.getStatus() == SalesOrderStatus.CONFIRMED &&
+                (newStatus == SalesOrderStatus.PROCESSING || newStatus == SalesOrderStatus.READY_FOR_DELIVERY)) ||
+                (order.getStatus() == SalesOrderStatus.PROCESSING && newStatus == SalesOrderStatus.READY_FOR_DELIVERY) ||
+                (order.getStatus() == SalesOrderStatus.PARTIALLY_DELIVERED &&
+                (newStatus == SalesOrderStatus.PROCESSING || newStatus == SalesOrderStatus.READY_FOR_DELIVERY));
+        if (!valid || hasActiveDelivery(id))
+            throw new BusinessRuleException("Invalid order transition. Delivery states come from delivery notes; cancellation uses the cancel action.");
         order.setStatus(newStatus);
         order.setUpdatedAt(LocalDateTime.now());
         return salesOrderRepository.save(order);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SalesOrder cancelSalesOrder(Long id, String reason) {
+        lockMutations();
         SalesOrder order = getSalesOrderById(id);
-        if (order.getStatus() == SalesOrderStatus.DELIVERED) {
-            throw new BusinessRuleException("Cannot cancel a delivered sales order.");
+        if (order.getStatus() == SalesOrderStatus.DELIVERED || order.getStatus() == SalesOrderStatus.CANCELLED ||
+                order.getItems().stream().anyMatch(item -> item.getDeliveredQuantity() > 0) || hasActiveDelivery(id) ||
+                deliveries.findBySalesOrderIdAndOrganizationId(id, tenant()).stream().anyMatch(note -> note.getGeneratedInvoiceId() != null)) {
+            throw new BusinessRuleException("Cannot cancel a closed, dispatched or partially fulfilled order. Resolve active deliveries first.");
         }
         order.setStatus(SalesOrderStatus.CANCELLED);
         if (reason != null && !reason.trim().isEmpty()) {
@@ -155,7 +221,8 @@ public class SalesOrderService {
         for (SalesOrderItem item : order.getItems()) {
             Product product = item.getProduct();
             int needed = item.getRemainingQuantity();
-            int currentStock = (int) product.getStock();
+            double ownReservation = order.getStatus() == SalesOrderStatus.CANCELLED || order.getStatus() == SalesOrderStatus.DRAFT || order.getStatus() == SalesOrderStatus.DELIVERED ? 0 : needed;
+            double currentStock = Math.max(0, product.getStock() - productRepository.reservedQuantity(product.getId()) + ownReservation);
             boolean isAvailable = currentStock >= needed;
 
             if (!isAvailable) {

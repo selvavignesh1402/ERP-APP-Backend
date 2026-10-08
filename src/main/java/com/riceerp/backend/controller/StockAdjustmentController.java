@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.StockAdjustmentRequest;
 import com.riceerp.backend.entity.StockAdjustment;
 import com.riceerp.backend.service.StockAdjustmentService;
@@ -10,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/inventory/adjustments")
+@RequestMapping({"/api/stock-adjustments", "/inventory/adjustments"})
 public class StockAdjustmentController {
 
     private final StockAdjustmentService stockAdjustmentService;
@@ -21,13 +23,13 @@ public class StockAdjustmentController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('stock:adjust')")
-    public StockAdjustment createAdjustment(@Valid @RequestBody StockAdjustmentRequest request) {
-        return stockAdjustmentService.createAdjustment(request);
+    public StockAdjustmentResponse createAdjustment(@Valid @RequestBody StockAdjustmentRequest request) {
+        return StockAdjustmentResponse.from(stockAdjustmentService.createAdjustment(request));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('inventory:view')")
-    public List<StockAdjustment> listAdjustments(@RequestParam(required = false) Long productId) {
-        return stockAdjustmentService.listAdjustmentsByProduct(productId);
+    public List<StockAdjustmentResponse> listAdjustments(@RequestParam(required = false) Long productId) {
+        return stockAdjustmentService.listAdjustmentsByProduct(productId).stream().map(StockAdjustmentResponse::from).toList();
     }
 }

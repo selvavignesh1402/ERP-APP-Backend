@@ -1,6 +1,9 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.ProductSalesHistoryResponse;
+import com.riceerp.backend.dto.SaleResponse;
 import com.riceerp.backend.dto.SaleRequest;
 import com.riceerp.backend.entity.Sale;
 import com.riceerp.backend.entity.SaleItem;
@@ -14,7 +17,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @RestController
-@RequestMapping("/sales")
+@RequestMapping({"/api/sales", "/sales"})
 public class SaleController {
 
     private final SaleService saleService;
@@ -25,8 +28,8 @@ public class SaleController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('sale:create')")
-    public Sale createSale(@Valid @RequestBody SaleRequest request) {
-        return saleService.createSale(request);
+    public SaleResponse createSale(@Valid @RequestBody SaleRequest request) {
+        return SaleResponse.from(saleService.createSale(request));
     }
 
     @PostMapping("/sync")
@@ -38,24 +41,30 @@ public class SaleController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('sale:view')")
-    public List<Sale> listSales() {
-        return saleService.listSales();
+    public List<SaleResponse> listSales() {
+        return saleService.listSales().stream().map(SaleResponse::from).toList();
+    }
+
+    @GetMapping("/summary")
+    @PreAuthorize("hasAuthority('sale:view')")
+    public com.riceerp.backend.dto.SalesSummary salesSummary() {
+        return saleService.salesSummary();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('sale:view')")
-    public Sale getSaleById(@PathVariable Long id) {
-        return saleService.getSaleById(id);
+    public SaleResponse getSaleById(@PathVariable Long id) {
+        return SaleResponse.from(saleService.getSaleById(id));
     }
 
     @GetMapping("/{id}/items")
     @PreAuthorize("hasAuthority('sale:view')")
-    public List<SaleItem> getSaleItems(@PathVariable Long id) {
-        return saleService.getSaleItems(id);
+    public List<SaleItemResponse> getSaleItems(@PathVariable Long id) {
+        return saleService.getSaleItems(id).stream().map(SaleItemResponse::from).toList();
     }
 
     @GetMapping("/product/{productId}/history")
-    @PreAuthorize("hasAuthority('sale:view')")
+    @PreAuthorize("hasAuthority('sale:view') or hasAuthority('report:view')")
     public ProductSalesHistoryResponse getProductSalesHistory(
             @PathVariable Long productId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,

@@ -51,7 +51,7 @@ class MySqlSchemaValidationTest {
                 "select count(*) from flyway_schema_history where success = 0", Integer.class));
         assertTrue(jdbc.queryForObject(
                 "select version from flyway_schema_history order by installed_rank desc limit 1", String.class)
-                .startsWith("4"), "V4 must be applied");
+                .startsWith("5"), "V5 must be applied");
 
         // Money columns really are DECIMAL, not silently floating point.
         for (String c : new String[]{"credit_balance", "credit_limit"})

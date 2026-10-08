@@ -41,11 +41,11 @@ public class Product {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "purchase_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double purchasePrice;
+    private java.math.BigDecimal purchasePrice = java.math.BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "selling_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double sellingPrice;
+    private java.math.BigDecimal sellingPrice = java.math.BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,6)")
@@ -56,8 +56,8 @@ public class Product {
     private double minimumStock = 0.0;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
-    @Column(name = "gst_rate", nullable = false, columnDefinition = "decimal(7,4)")
-    private double gstRate = 0.0;
+    @Column(name = "gst_rate", columnDefinition = "decimal(7,4)")
+    private Double gstRate;
 
     @Column(name = "hsn_code")
     private String hsnCode;
@@ -112,19 +112,21 @@ public class Product {
         this.unit = unit;
     }
 
-    public double getPurchasePrice() {
+    public java.math.BigDecimal getPurchasePrice() {
         return purchasePrice;
     }
 
-    public void setPurchasePrice(double purchasePrice) {
+    public void setPurchasePrice(double purchasePrice) { this.purchasePrice = java.math.BigDecimal.valueOf(purchasePrice); }
+    public void setPurchasePrice(java.math.BigDecimal purchasePrice) {
         this.purchasePrice = purchasePrice;
     }
 
-    public double getSellingPrice() {
+    public java.math.BigDecimal getSellingPrice() {
         return sellingPrice;
     }
 
-    public void setSellingPrice(double sellingPrice) {
+    public void setSellingPrice(double sellingPrice) { this.sellingPrice = java.math.BigDecimal.valueOf(sellingPrice); }
+    public void setSellingPrice(java.math.BigDecimal sellingPrice) {
         this.sellingPrice = sellingPrice;
     }
 
@@ -144,11 +146,11 @@ public class Product {
         this.minimumStock = minimumStock;
     }
 
-    public double getGstRate() {
+    public Double getGstRate() {
         return gstRate;
     }
 
-    public void setGstRate(double gstRate) {
+    public void setGstRate(Double gstRate) {
         this.gstRate = gstRate;
     }
 

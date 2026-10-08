@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.PurchaseRequest;
 import com.riceerp.backend.dto.PurchaseReturnRequest;
 import com.riceerp.backend.dto.PurchaseStatusUpdateRequest;
@@ -14,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/purchases")
+@RequestMapping({"/api/purchases", "/purchases"})
 public class PurchaseController {
 
     private final PurchaseService purchaseService;
@@ -25,65 +27,65 @@ public class PurchaseController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('purchase:create')")
-    public Purchase createPurchase(@Valid @RequestBody PurchaseRequest request) {
-        return purchaseService.createPurchase(request);
+    public PurchaseResponse createPurchase(@Valid @RequestBody PurchaseRequest request) {
+        return PurchaseResponse.from(purchaseService.createPurchase(request));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase:view')")
-    public List<Purchase> listPurchases(
+    public List<PurchaseResponse> listPurchases(
             @RequestParam(required = false) Long supplierId,
             @RequestParam(required = false) String invoiceNumber) {
-        return purchaseService.listPurchases(supplierId, invoiceNumber);
+        return purchaseService.listPurchases(supplierId, invoiceNumber).stream().map(PurchaseResponse::from).toList();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase:view')")
-    public Purchase getPurchaseById(@PathVariable Long id) {
-        return purchaseService.getPurchaseById(id);
+    public PurchaseResponse getPurchaseById(@PathVariable Long id) {
+        return PurchaseResponse.from(purchaseService.getPurchaseById(id));
     }
 
     @GetMapping("/{id}/items")
     @PreAuthorize("hasAuthority('purchase:view')")
-    public List<PurchaseItem> getPurchaseItems(@PathVariable Long id) {
-        return purchaseService.getPurchaseItems(id);
+    public List<PurchaseItemResponse> getPurchaseItems(@PathVariable Long id) {
+        return purchaseService.getPurchaseItems(id).stream().map(PurchaseItemResponse::from).toList();
     }
 
     @PutMapping("/{id}/submit")
     @PreAuthorize("hasAuthority('purchase:create')")
-    public Purchase submitPurchase(@PathVariable Long id) {
-        return purchaseService.submit(id);
+    public PurchaseResponse submitPurchase(@PathVariable Long id) {
+        return PurchaseResponse.from(purchaseService.submit(id));
     }
 
     @PutMapping("/{id}/approve")
     @PreAuthorize("hasAuthority('purchase:approve')")
-    public Purchase approvePurchase(@PathVariable Long id) {
-        return purchaseService.approve(id);
+    public PurchaseResponse approvePurchase(@PathVariable Long id) {
+        return PurchaseResponse.from(purchaseService.approve(id));
     }
 
     @PutMapping("/{id}/order")
     @PreAuthorize("hasAuthority('purchase:approve')")
-    public Purchase orderPurchase(@PathVariable Long id) {
-        return purchaseService.order(id);
+    public PurchaseResponse orderPurchase(@PathVariable Long id) {
+        return PurchaseResponse.from(purchaseService.order(id));
     }
 
     @PutMapping("/{id}/cancel")
     @PreAuthorize("hasAuthority('purchase:approve')")
-    public Purchase cancelPurchase(@PathVariable Long id) {
-        return purchaseService.cancel(id);
+    public PurchaseResponse cancelPurchase(@PathVariable Long id) {
+        return PurchaseResponse.from(purchaseService.cancel(id));
     }
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('purchase:approve')")
-    public Purchase updatePurchaseStatus(@PathVariable Long id,
+    public PurchaseResponse updatePurchaseStatus(@PathVariable Long id,
                                          @RequestBody PurchaseStatusUpdateRequest request) {
-        return purchaseService.updateStatus(id, request.getStatus());
+        return PurchaseResponse.from(purchaseService.updateStatus(id, request.getStatus()));
     }
 
     @PostMapping("/{id}/returns")
     @PreAuthorize("hasAuthority('purchase:create')")
-    public PurchaseReturn createPurchaseReturn(@PathVariable Long id,
+    public PurchaseReturnResponse createPurchaseReturn(@PathVariable Long id,
                                                @Valid @RequestBody PurchaseReturnRequest request) {
-        return purchaseService.createPurchaseReturn(id, request);
+        return PurchaseReturnResponse.from(purchaseService.createPurchaseReturn(id, request));
     }
 }

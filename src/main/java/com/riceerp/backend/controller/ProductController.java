@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.ProductRequest;
 import com.riceerp.backend.dto.SupplierOptionResponse;
 import com.riceerp.backend.entity.PriceHistory;
@@ -12,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/products")
+@RequestMapping({"/api/products", "/products"})
 public class ProductController {
 
     private final ProductService productService;
@@ -25,40 +27,40 @@ public class ProductController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('product:create')")
-    public Product createProduct(@Valid @RequestBody ProductRequest request) {
-        return productService.createProduct(request);
+    public ProductResponse createProduct(@Valid @RequestBody ProductRequest request) {
+        return ProductResponse.from(productService.createProduct(request));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('product:edit')")
-    public Product updateProduct(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
-        return productService.updateProduct(id, request);
+    public ProductResponse updateProduct(@PathVariable Long id, @Valid @RequestBody ProductRequest request) {
+        return ProductResponse.from(productService.updateProduct(id, request));
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('product:view')")
-    public List<Product> listProducts(
+    @PreAuthorize("hasAuthority('product:view') or hasAuthority('report:view')")
+    public List<ProductResponse> listProducts(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) String category) {
-        return productService.listProducts(search, category);
+        return productService.listProducts(search, category).stream().map(ProductResponse::from).toList();
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('product:view')")
-    public Product getProductById(@PathVariable Long id) {
-        return productService.getProductById(id);
+    public ProductResponse getProductById(@PathVariable Long id) {
+        return ProductResponse.from(productService.getProductById(id));
     }
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority('product:status')")
-    public Product toggleStatus(@PathVariable Long id, @RequestParam String status) {
-        return productService.toggleProductStatus(id, status);
+    public ProductResponse toggleStatus(@PathVariable Long id, @RequestParam String status) {
+        return ProductResponse.from(productService.toggleProductStatus(id, status));
     }
 
     @GetMapping("/{id}/price-history")
     @PreAuthorize("hasAuthority('product:view')")
-    public List<PriceHistory> getPriceHistory(@PathVariable Long id) {
-        return productService.getPriceHistory(id);
+    public List<PriceHistoryResponse> getPriceHistory(@PathVariable Long id) {
+        return productService.getPriceHistory(id).stream().map(PriceHistoryResponse::from).toList();
     }
 
     @GetMapping("/{id}/suppliers")

@@ -11,8 +11,10 @@ import com.riceerp.backend.exception.NotFoundException;
 import com.riceerp.backend.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.*;
 
 @Service
@@ -24,9 +26,9 @@ public class PurchaseService {
         TRANSITIONS.put(PurchaseStatus.DRAFT, EnumSet.of(PurchaseStatus.PENDING_APPROVAL, PurchaseStatus.CANCELLED));
         TRANSITIONS.put(PurchaseStatus.PENDING_APPROVAL, EnumSet.of(PurchaseStatus.APPROVED, PurchaseStatus.CANCELLED));
         TRANSITIONS.put(PurchaseStatus.APPROVED, EnumSet.of(PurchaseStatus.ORDERED, PurchaseStatus.CANCELLED));
-        TRANSITIONS.put(PurchaseStatus.ORDERED, EnumSet.of(PurchaseStatus.PARTIALLY_RECEIVED, PurchaseStatus.RECEIVED, PurchaseStatus.CANCELLED));
-        TRANSITIONS.put(PurchaseStatus.PARTIALLY_RECEIVED, EnumSet.of(PurchaseStatus.RECEIVED, PurchaseStatus.CANCELLED));
-        TRANSITIONS.put(PurchaseStatus.RECEIVED, EnumSet.of(PurchaseStatus.COMPLETED, PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.ORDERED, EnumSet.of(PurchaseStatus.CANCELLED));
+        TRANSITIONS.put(PurchaseStatus.PARTIALLY_RECEIVED, EnumSet.noneOf(PurchaseStatus.class));
+        TRANSITIONS.put(PurchaseStatus.RECEIVED, EnumSet.of(PurchaseStatus.COMPLETED));
         TRANSITIONS.put(PurchaseStatus.COMPLETED, EnumSet.noneOf(PurchaseStatus.class));
         TRANSITIONS.put(PurchaseStatus.CANCELLED, EnumSet.noneOf(PurchaseStatus.class));
     }
@@ -37,6 +39,8 @@ public class PurchaseService {
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
     private final StockMovementService stockMovementService;
+    private final GoodsReceiptService goodsReceiptService;
+    private final ProcurementLock procurementLock;
 
     public PurchaseService(
             PurchaseRepository purchaseRepository,
@@ -44,13 +48,16 @@ public class PurchaseService {
             PurchaseReturnRepository purchaseReturnRepository,
             SupplierRepository supplierRepository,
             ProductRepository productRepository,
-            StockMovementService stockMovementService) {
+            StockMovementService stockMovementService, GoodsReceiptService goodsReceiptService,
+            ProcurementLock procurementLock) {
         this.purchaseRepository = purchaseRepository;
         this.purchaseItemRepository = purchaseItemRepository;
         this.purchaseReturnRepository = purchaseReturnRepository;
         this.supplierRepository = supplierRepository;
         this.productRepository = productRepository;
         this.stockMovementService = stockMovementService;
+        this.goodsReceiptService = goodsReceiptService;
+        this.procurementLock = procurementLock;
     }
 
     public static boolean canTransition(PurchaseStatus from, PurchaseStatus to) {
@@ -69,85 +76,137 @@ public class PurchaseService {
 
     @Transactional
     public Purchase createPurchase(PurchaseRequest request) {
+        if (request.getItems() == null || request.getItems().isEmpty())
+            throw new BusinessRuleException("Purchase must contain at least one item.");
         Supplier supplier = supplierRepository.findById(request.getSupplierId())
                 .orElseThrow(() -> new NotFoundException("Supplier not found with id: " + request.getSupplierId()));
 
         Purchase purchase = new Purchase();
         purchase.setSupplier(supplier);
         purchase.setInvoiceNumber(request.getInvoiceNumber());
-        purchase.setStatus(request.getStatus() != null ? request.getStatus() : PurchaseStatus.DRAFT);
+        // Creation permission never grants approval or receiving permission.
+        purchase.setStatus(PurchaseStatus.DRAFT);
         purchase.setPurchaseDate(LocalDateTime.now());
 
-        // Save initial empty total to generate ID
-        purchase.setTotalAmount(0.0);
-        Purchase savedPurchase = purchaseRepository.save(purchase);
-
-        double totalAmount = 0.0;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal maximum = new BigDecimal("999999999999999.9999");
         List<PurchaseItem> items = new ArrayList<>();
 
         for (PurchaseItemRequest itemReq : request.getItems()) {
+            if (itemReq == null || itemReq.getProductId() == null)
+                throw new BusinessRuleException("Each purchase item must specify a product.");
+            BigDecimal quantity = PurchaseQuantities.positive(itemReq.getQuantity());
+            BigDecimal price = itemReq.getPrice();
+            if (quantity.compareTo(new BigDecimal("9999999999999.999999")) > 0 || quantity.stripTrailingZeros().scale() > 6)
+                throw new BusinessRuleException("Purchase quantity is too large or has more than six decimal places.");
+            if (price == null || price.signum() <= 0 || price.compareTo(maximum) > 0 || price.stripTrailingZeros().scale() > 4)
+                throw new BusinessRuleException("Purchase price must be positive, within the supported range, and have at most four decimal places.");
             Product product = productRepository.findById(itemReq.getProductId())
                     .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
 
             PurchaseItem item = new PurchaseItem();
-            item.setPurchase(savedPurchase);
             item.setProduct(product);
             item.setQuantity(itemReq.getQuantity());
             item.setPrice(itemReq.getPrice());
-            purchaseItemRepository.save(item);
-
-            totalAmount += (itemReq.getQuantity() * itemReq.getPrice());
+            items.add(item);
+            totalAmount = totalAmount.add(quantity.multiply(price));
         }
 
-        savedPurchase.setTotalAmount(totalAmount);
-        return purchaseRepository.save(savedPurchase);
+        // Match the existing four-decimal storage precision explicitly before persisting.
+        totalAmount = totalAmount.setScale(4, java.math.RoundingMode.HALF_UP);
+        if (totalAmount.compareTo(maximum) > 0)
+            throw new BusinessRuleException("Purchase total exceeds the supported amount.");
+        purchase.setTotalAmount(totalAmount);
+        Purchase savedPurchase = purchaseRepository.save(purchase);
+        for (PurchaseItem item : items) {
+            item.setPurchase(savedPurchase);
+            purchaseItemRepository.save(item);
+        }
+        return savedPurchase;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Purchase updateStatus(Long id, PurchaseStatus target) {
-        Purchase purchase = getPurchaseById(id);
+        Long orgId = procurementLock.acquire();
+        if (target == null) {
+            throw new BusinessRuleException("Purchase status is required.");
+        }
+        if (target == PurchaseStatus.PARTIALLY_RECEIVED || target == PurchaseStatus.RECEIVED) {
+            throw new BusinessRuleException("Record a goods receipt to update the purchase receiving status.");
+        }
+        Purchase purchase = purchaseRepository.findByIdAndOrganizationId(id, orgId)
+                .orElseThrow(() -> new NotFoundException("Purchase not found with id: " + id));
+        if (target == PurchaseStatus.CANCELLED && !goodsReceiptService.listReceiptsForPurchase(id).isEmpty())
+            throw new BusinessRuleException("A purchase with goods receipts cannot be cancelled. Record a purchase return for goods sent back.");
         assertTransition(purchase, target);
+        if (target == PurchaseStatus.COMPLETED) {
+            Map<Long, BigDecimal> ordered = PurchaseQuantities.ordered(purchaseItemRepository.findByPurchaseId(id));
+            Map<Long, Double> received = goodsReceiptService.getReceivedQuantities(id);
+            if (!ordered.keySet().equals(received.keySet()) || ordered.entrySet().stream().anyMatch(entry ->
+                    entry.getValue().compareTo(PurchaseQuantities.nonNegative(received.getOrDefault(entry.getKey(), 0.0))) != 0))
+                throw new BusinessRuleException("Complete receiving all ordered goods before completing the purchase.");
+        }
         purchase.setStatus(target);
         return purchaseRepository.save(purchase);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Purchase submit(Long id) {
         return updateStatus(id, PurchaseStatus.PENDING_APPROVAL);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Purchase approve(Long id) {
         return updateStatus(id, PurchaseStatus.APPROVED);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Purchase order(Long id) {
         return updateStatus(id, PurchaseStatus.ORDERED);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Purchase cancel(Long id) {
         return updateStatus(id, PurchaseStatus.CANCELLED);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public PurchaseReturn createPurchaseReturn(Long purchaseId, PurchaseReturnRequest request) {
-        Purchase purchase = purchaseRepository.findById(purchaseId)
+        Long orgId = procurementLock.acquire();
+        BigDecimal returning = PurchaseQuantities.positive(request.getQuantityReturned());
+        Purchase purchase = purchaseRepository.findByIdAndOrganizationId(purchaseId, orgId)
                 .orElseThrow(() -> new NotFoundException("Purchase not found with id: " + purchaseId));
-
-        Product product = productRepository.findById(request.getProductId())
+        if (purchase.getStatus() != PurchaseStatus.PARTIALLY_RECEIVED && purchase.getStatus() != PurchaseStatus.RECEIVED
+                && purchase.getStatus() != PurchaseStatus.COMPLETED)
+            throw new BusinessRuleException("Returns require a received or partially received purchase.");
+        Map<Long, BigDecimal> ordered = PurchaseQuantities.ordered(purchaseItemRepository.findByPurchaseId(purchaseId));
+        if (!ordered.containsKey(request.getProductId()))
+            throw new BusinessRuleException("This product is not part of the purchase.");
+        BigDecimal received = PurchaseQuantities.nonNegative(goodsReceiptService.getReceivedQuantities(purchaseId)
+                .getOrDefault(request.getProductId(), 0.0));
+        BigDecimal returned = BigDecimal.ZERO;
+        for (PurchaseReturn previous : purchaseReturnRepository.findByPurchaseIdAndOrganizationId(purchaseId, orgId)) {
+            if (Objects.equals(previous.getProduct().getId(), request.getProductId()))
+                returned = returned.add(PurchaseQuantities.positive(previous.getQuantityReturned()));
+        }
+        BigDecimal remaining = received.subtract(returned);
+        if (returning.compareTo(remaining) > 0)
+            throw new BusinessRuleException("Cannot return more than received on this purchase minus earlier returns. Remaining: "
+                    + remaining.max(BigDecimal.ZERO).toPlainString());
+        Product product = productRepository.findForStockUpdate(request.getProductId())
                 .orElseThrow(() -> new NotFoundException("Product not found with id: " + request.getProductId()));
 
         // Never drive stock negative via a purchase return.
-        if (product.getStock() < request.getQuantityReturned()) {
+        BigDecimal stock = PurchaseQuantities.nonNegative(product.getStock());
+        BigDecimal available = stock.subtract(BigDecimal.valueOf(productRepository.reservedQuantity(product.getId())));
+        if (available.compareTo(returning) < 0) {
             throw new BusinessRuleException("Cannot return more than available stock for product: "
                     + product.getProductName() + " (Available: " + product.getStock()
                     + ", Requested: " + request.getQuantityReturned() + ")");
         }
 
         // Subtract Stock
-        product.setStock(product.getStock() - request.getQuantityReturned());
+        product.setStock(PurchaseQuantities.stored(stock.subtract(returning)));
         productRepository.save(product);
 
         // Stock movement ledger

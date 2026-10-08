@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/dashboard")
+@RequestMapping({"/api/dashboard", "/dashboard"})
 public class DashboardController {
 
     private final DashboardService dashboardService;

@@ -33,13 +33,14 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public ResponseEntity<?> updateUser(
             @PathVariable Long id,
             @RequestBody UpdateUserRequest request) {
 
+        userRepository.lockActivePlatformAdmins();
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + id));
+                .orElseThrow(() -> new com.riceerp.backend.exception.NotFoundException("User not found with id: " + id));
 
         boolean roleChange = request.getRole() != null && request.getRole() != user.getPlatformRole();
         boolean activeChange = request.getActive() != null && request.getActive() != user.isActive();

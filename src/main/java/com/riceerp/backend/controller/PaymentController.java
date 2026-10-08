@@ -1,6 +1,7 @@
 package com.riceerp.backend.controller;
 
 import com.riceerp.backend.dto.PaymentRequest;
+import com.riceerp.backend.dto.PaymentResponse;
 import com.riceerp.backend.entity.Payment;
 import com.riceerp.backend.service.PaymentService;
 import jakarta.validation.Valid;
@@ -10,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/payments")
+@RequestMapping({"/api/payments", "/payments"})
 public class PaymentController {
 
     private final PaymentService paymentService;
@@ -21,19 +22,19 @@ public class PaymentController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('payment:create')")
-    public Payment createPayment(@Valid @RequestBody PaymentRequest request) {
-        return paymentService.createPayment(request);
+    public PaymentResponse createPayment(@Valid @RequestBody PaymentRequest request) {
+        return PaymentResponse.from(paymentService.createPayment(request));
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('payment:view')")
-    public List<Payment> listAllPayments() {
-        return paymentService.listAllPayments();
+    public List<PaymentResponse> listAllPayments() {
+        return paymentService.listAllPayments().stream().map(PaymentResponse::from).toList();
     }
 
     @GetMapping("/reference")
     @PreAuthorize("hasAuthority('payment:view')")
-    public List<Payment> getPaymentsByReference(@RequestParam String type, @RequestParam Long id) {
-        return paymentService.getPaymentsByReference(type, id);
+    public List<PaymentResponse> getPaymentsByReference(@RequestParam String type, @RequestParam Long id) {
+        return paymentService.getPaymentsByReference(type, id).stream().map(PaymentResponse::from).toList();
     }
 }

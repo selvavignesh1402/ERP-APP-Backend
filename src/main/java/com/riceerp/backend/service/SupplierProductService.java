@@ -17,6 +17,12 @@ import java.util.stream.Collectors;
 
 @Service
 public class SupplierProductService {
+    private static void validatePrice(SupplierProductRequest request) {
+        var price = request.getPurchasePrice();
+        if (price == null || price.signum() <= 0 || price.stripTrailingZeros().scale() > 4 ||
+                price.compareTo(new java.math.BigDecimal("999999999999999.9999")) > 0)
+            throw new com.riceerp.backend.exception.BusinessRuleException("Supplier purchase price must be positive, within the supported range, and have at most four decimal places.");
+    }
 
     private final SupplierProductRepository supplierProductRepository;
     private final SupplierRepository supplierRepository;
@@ -32,13 +38,14 @@ public class SupplierProductService {
 
     @Transactional
     public SupplierProduct assignProduct(Long supplierId, SupplierProductRequest request) {
+        validatePrice(request);
         Supplier supplier = supplierRepository.findById(supplierId)
-                .orElseThrow(() -> new RuntimeException("Supplier not found with id: " + supplierId));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Supplier not found with id: " + supplierId));
         Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + request.getProductId()));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Product not found with id: " + request.getProductId()));
 
         if (supplierProductRepository.findBySupplierIdAndProductId(supplierId, request.getProductId()).isPresent()) {
-            throw new RuntimeException("Product is already assigned to this supplier.");
+            throw new com.riceerp.backend.exception.BusinessRuleException("Product is already assigned to this supplier.");
         }
 
         SupplierProduct sp = new SupplierProduct();
@@ -52,8 +59,9 @@ public class SupplierProductService {
 
     @Transactional
     public SupplierProduct updateProcurementData(Long supplierId, Long productId, SupplierProductRequest request) {
+        validatePrice(request);
         SupplierProduct sp = supplierProductRepository.findBySupplierIdAndProductId(supplierId, productId)
-                .orElseThrow(() -> new RuntimeException("Product is not assigned to this supplier."));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Product is not assigned to this supplier."));
         sp.setPurchasePrice(request.getPurchasePrice());
         sp.setLeadTimeDays(request.getLeadTimeDays());
         sp.setMinOrderQty(request.getMinOrderQty());
@@ -67,7 +75,7 @@ public class SupplierProductService {
     public List<SupplierOptionResponse> getSupplierOptionsForProduct(Long productId) {
         // Ensure product exists
         productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found with id: " + productId));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Product not found with id: " + productId));
 
         return supplierProductRepository.findByProductId(productId).stream()
                 .map(sp -> {
@@ -79,7 +87,7 @@ public class SupplierProductService {
                     resp.setMinOrderQty(sp.getMinOrderQty());
                     return resp;
                 })
-                .sorted(Comparator.comparingDouble(SupplierOptionResponse::getPurchasePrice))
+                .sorted(Comparator.comparing(SupplierOptionResponse::getPurchasePrice))
                 .collect(Collectors.toList());
     }
 }

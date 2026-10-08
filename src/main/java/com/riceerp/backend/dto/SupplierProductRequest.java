@@ -10,7 +10,8 @@ public class SupplierProductRequest {
 
     @NotNull(message = "Purchase price is required")
     @Positive(message = "Purchase price must be greater than zero")
-    private double purchasePrice;
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4, message = "Purchase price must have at most 15 integer digits and four decimal places")
+    private java.math.BigDecimal purchasePrice;
 
     @PositiveOrZero(message = "Lead time must be zero or greater")
     private Integer leadTimeDays;
@@ -27,12 +28,14 @@ public class SupplierProductRequest {
         this.productId = productId;
     }
 
-    public double getPurchasePrice() {
+    public java.math.BigDecimal getPurchasePrice() {
         return purchasePrice;
     }
 
-    public void setPurchasePrice(double purchasePrice) {
-        this.purchasePrice = purchasePrice;
+    public void setPurchasePrice(double purchasePrice) { this.purchasePrice = java.math.BigDecimal.valueOf(purchasePrice); }
+    @com.fasterxml.jackson.annotation.JsonSetter("purchasePrice")
+    public void setPurchasePrice(java.math.BigDecimal purchasePrice) {
+        this.purchasePrice = purchasePrice == null ? null : purchasePrice.stripTrailingZeros();
     }
 
     public Integer getLeadTimeDays() {

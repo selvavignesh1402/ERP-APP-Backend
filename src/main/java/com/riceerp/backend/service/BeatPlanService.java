@@ -52,10 +52,11 @@ public class BeatPlanService {
     // CREATE / UPDATE BEAT PLANS
     // ─────────────────────────────────────────────
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public BeatPlanDto createBeatPlan(BeatPlanDto dto) {
-        User salesperson = userRepo.findById(dto.getSalespersonId())
-                .orElseThrow(() -> new RuntimeException("Salesperson not found: " + dto.getSalespersonId()));
+        lockPlans(); validateEntries(dto);
+        User salesperson = userRepo.findActiveOrganizationUser(dto.getSalespersonId(), tenant())
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Salesperson not found: " + dto.getSalespersonId()));
 
         BeatPlan plan = new BeatPlan();
         plan.setName(dto.getName());
@@ -66,7 +67,7 @@ public class BeatPlanService {
         if (dto.getEntries() != null) {
             for (BeatPlanDto.EntryDto e : dto.getEntries()) {
                 Customer customer = customerRepo.findById(e.getCustomerId())
-                        .orElseThrow(() -> new RuntimeException("Customer not found: " + e.getCustomerId()));
+                        .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Customer not found: " + e.getCustomerId()));
                 BeatPlanEntry entry = new BeatPlanEntry();
                 entry.setBeatPlan(plan);
                 entry.setDayOfWeek(e.getDayOfWeek());
@@ -82,19 +83,31 @@ public class BeatPlanService {
         return toDto(plan);
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public BeatPlanDto updateBeatPlan(Long planId, BeatPlanDto dto) {
+        lockPlans(); validateEntries(dto);
         BeatPlan plan = beatPlanRepo.findById(planId)
-                .orElseThrow(() -> new RuntimeException("Beat plan not found: " + planId));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Beat plan not found: " + planId));
         plan.setName(dto.getName());
         plan.setActive(dto.isActive());
+        if (dto.getSalespersonId() != null) plan.setSalesperson(userRepo.findActiveOrganizationUser(dto.getSalespersonId(), tenant())
+                .orElseThrow(() -> new IllegalArgumentException("Salesperson must be an active member of this shop")));
+        Set<LocalDate> futureDates = new HashSet<>();
+        for (VisitSchedule schedule : visitScheduleRepo.findByBeatPlanIdAndScheduledDateGreaterThanEqual(planId, LocalDate.now())) {
+            futureDates.add(schedule.getScheduledDate());
+            // Keep completed or started visits as historical records.
+            VisitSchedule locked = visitScheduleRepo.findForUpdate(schedule.getId(), tenant()).orElseThrow();
+            if (locked.getStatus() == VisitStatus.PENDING && visitCheckInRepo.findByVisitScheduleId(locked.getId()).isEmpty())
+                visitScheduleRepo.delete(locked);
+        }
+        visitScheduleRepo.flush();
 
         // Replace entries
         beatPlanEntryRepo.deleteByBeatPlanId(planId);
         if (dto.getEntries() != null) {
             for (BeatPlanDto.EntryDto e : dto.getEntries()) {
                 Customer customer = customerRepo.findById(e.getCustomerId())
-                        .orElseThrow(() -> new RuntimeException("Customer not found: " + e.getCustomerId()));
+                        .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Customer not found: " + e.getCustomerId()));
                 BeatPlanEntry entry = new BeatPlanEntry();
                 entry.setBeatPlan(plan);
                 entry.setDayOfWeek(e.getDayOfWeek());
@@ -104,6 +117,7 @@ public class BeatPlanService {
             }
         }
         beatPlanRepo.save(plan);
+        for (LocalDate date : futureDates) ensureSchedulesForDate(plan.getSalesperson().getId(), date);
         // Sync schedules for the current week immediately
         LocalDate monday = LocalDate.now().with(DayOfWeek.MONDAY);
         generateWeeklySchedules(monday);
@@ -125,15 +139,18 @@ public class BeatPlanService {
 
     public BeatPlanDto getPlanById(Long id) {
         return beatPlanRepo.findById(id).map(this::toDto)
-                .orElseThrow(() -> new RuntimeException("Beat plan not found: " + id));
+                .orElseThrow(() -> new com.riceerp.backend.exception.BusinessRuleException("Beat plan not found: " + id));
     }
 
     // ─────────────────────────────────────────────
     // GENERATE WEEKLY SCHEDULES & AUTO-ENSURE
     // ─────────────────────────────────────────────
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void ensureSchedulesForDate(Long salespersonId, LocalDate date) {
+        lockPlans();
+        visitScheduleRepo.expireUnstartedSchedules(tenant(), LocalDate.now());
+        if (date.isBefore(LocalDate.now())) return;
         DayOfWeek targetDay = date.getDayOfWeek();
         List<BeatPlan> plans;
         if (salespersonId != null) {
@@ -172,8 +189,10 @@ public class BeatPlanService {
         }
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public int generateWeeklySchedules(LocalDate weekStart) {
+        lockPlans();
+        if (weekStart == null || weekStart.getDayOfWeek() != DayOfWeek.MONDAY) throw new IllegalArgumentException("Week start must be a Monday");
         // weekStart should be a Monday
         List<BeatPlan> activePlans = beatPlanRepo.findByIsActiveTrue();
         int created = 0;
@@ -186,6 +205,7 @@ public class BeatPlanService {
                 while (visitDate.getDayOfWeek() != entry.getDayOfWeek()) {
                     visitDate = visitDate.plusDays(1);
                 }
+                if (visitDate.isBefore(LocalDate.now())) continue;
                 // Idempotent — skip if already scheduled for this customer on this date
                 if (!visitScheduleRepo.existsByBeatPlanIdAndCustomerIdAndScheduledDate(
                         plan.getId(), entry.getCustomer().getId(), visitDate)) {
@@ -208,9 +228,14 @@ public class BeatPlanService {
     // TODAY'S ROUTE — for salesperson
     // ─────────────────────────────────────────────
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public List<TodayRouteDto> getTodayRoute(Long salespersonId) {
-        LocalDate today = LocalDate.now();
+        return getRoute(salespersonId, LocalDate.now());
+    }
+
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public List<TodayRouteDto> getRoute(Long salespersonId, LocalDate today) {
+        Objects.requireNonNull(today, "Route date is required");
         ensureSchedulesForDate(salespersonId, today);
 
         List<VisitSchedule> schedules = visitScheduleRepo
@@ -235,6 +260,7 @@ public class BeatPlanService {
             dto.setOutstandingBalance(s.getCustomer().getCreditBalance());
             dto.setVisitOrder(s.getVisitOrder());
             dto.setStatus(s.getStatus());
+            dto.setScheduledDate(s.getScheduledDate());
 
             // Enrich with last visit info
             visitCheckInRepo.findByCustomerIdOrderByCheckInTimeDesc(s.getCustomer().getId())
@@ -243,12 +269,9 @@ public class BeatPlanService {
                     });
 
             // Enrich with last order
-            saleRepo.findTop5ByOrderBySaleDateDesc().stream()
-                    .filter(sale -> sale.getCustomer() != null &&
-                            sale.getCustomer().getId().equals(s.getCustomer().getId()))
-                    .findFirst().ifPresent(sale -> {
+            saleRepo.findFirstByCustomerIdOrderBySaleDateDescIdDesc(s.getCustomer().getId()).ifPresent(sale -> {
                         dto.setLastOrderAmount(sale.getGrandTotal());
-                        dto.setLastOrderDate(sale.getSaleDate().toLocalDate().toString());
+                        dto.setLastOrderDate(sale.getSaleDate() == null ? null : sale.getSaleDate().toLocalDate().toString());
                     });
 
             // Check if already checked in today
@@ -265,7 +288,9 @@ public class BeatPlanService {
     // MANAGER DASHBOARD
     // ─────────────────────────────────────────────
 
+    @Transactional
     public ManagerDashboardDto getManagerDashboard(LocalDate date) {
+        visitScheduleRepo.expireUnstartedSchedules(tenant(), LocalDate.now());
         List<VisitSchedule> allSchedules = visitScheduleRepo.findAllForDate(date);
 
         // Group by salesperson
@@ -293,10 +318,10 @@ public class BeatPlanService {
             List<VisitCheckIn> checkIns = visitCheckInRepo.findBySalespersonIdAndCheckInTimeBetween(spId, dayStart,
                     dayEnd);
 
-            double totalOrders = checkIns.stream()
+            java.math.BigDecimal totalOrders = checkIns.stream()
                     .filter(ci -> ci.getSaleId() != null)
-                    .mapToDouble(ci -> saleRepo.findById(ci.getSaleId()).map(Sale::getGrandTotal).orElse(0.0))
-                    .sum();
+                    .map(ci -> saleRepo.findById(ci.getSaleId()).map(Sale::getGrandTotal).orElse(java.math.BigDecimal.ZERO))
+                    .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
             summary.setTotalOrders(totalOrders);
 
             // Collections = payments recorded against today's check-ins
@@ -304,8 +329,8 @@ public class BeatPlanService {
                     .map(VisitCheckIn::getPaymentId)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
-            double totalCollections = paymentIds.isEmpty()
-                    ? 0.0
+            java.math.BigDecimal totalCollections = paymentIds.isEmpty()
+                    ? java.math.BigDecimal.ZERO
                     : paymentRepo.sumAmountByIdIn(paymentIds);
             summary.setTotalCollections(totalCollections);
 
@@ -331,6 +356,22 @@ public class BeatPlanService {
     // ─────────────────────────────────────────────
     // MAPPER
     // ─────────────────────────────────────────────
+
+    private Long tenant() {
+        Long id = com.riceerp.backend.security.TenantContext.getCurrentTenant();
+        if (id == null || id <= 0) throw new org.springframework.security.access.AccessDeniedException("Select a shop first");
+        return id;
+    }
+    private void lockPlans() { beatPlanRepo.lockOrganization(tenant()).orElseThrow(); }
+    private void validateEntries(BeatPlanDto dto) {
+        if (dto.getName() == null || dto.getName().isBlank()) throw new IllegalArgumentException("Plan name is required");
+        Set<String> seen = new HashSet<>();
+        if (dto.getEntries() != null) for (BeatPlanDto.EntryDto entry : dto.getEntries()) {
+            if (entry == null || entry.getCustomerId() == null || entry.getDayOfWeek() == null || entry.getVisitOrder() < 0 ||
+                    !seen.add(entry.getDayOfWeek() + ":" + entry.getCustomerId()))
+                throw new IllegalArgumentException("Each customer/day must appear once with a non-negative visit order");
+        }
+    }
 
     private BeatPlanDto toDto(BeatPlan plan) {
         BeatPlanDto dto = new BeatPlanDto();

@@ -1,4 +1,5 @@
 package com.riceerp.backend.entity;
+import java.math.BigDecimal;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -37,11 +38,11 @@ public class Customer {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "credit_limit", nullable = false, columnDefinition = "decimal(19,4)")
-    private double creditLimit = 0.0;
+    private BigDecimal creditLimit = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "credit_balance", nullable = false, columnDefinition = "decimal(19,4)")
-    private double creditBalance = 0.0;
+    private BigDecimal creditBalance = BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -103,19 +104,23 @@ public class Customer {
         this.gstNumber = gstNumber;
     }
 
-    public double getCreditLimit() {
+    public BigDecimal getCreditLimit() {
         return creditLimit;
     }
 
-    public void setCreditLimit(double creditLimit) {
+    public void setCreditLimit(double creditLimit) { this.creditLimit = BigDecimal.valueOf(creditLimit); }
+
+    public void setCreditLimit(BigDecimal creditLimit) {
         this.creditLimit = creditLimit;
     }
 
-    public double getCreditBalance() {
+    public BigDecimal getCreditBalance() {
         return creditBalance;
     }
 
-    public void setCreditBalance(double creditBalance) {
+    public void setCreditBalance(double creditBalance) { this.creditBalance = BigDecimal.valueOf(creditBalance); }
+
+    public void setCreditBalance(BigDecimal creditBalance) {
         this.creditBalance = creditBalance;
     }
 

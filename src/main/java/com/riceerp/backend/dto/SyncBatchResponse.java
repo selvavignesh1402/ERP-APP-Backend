@@ -17,6 +17,9 @@ public class SyncBatchResponse {
         private String billNumber;
         private String status; // "SYNCED", "ALREADY_SYNCED", "FAILED"
         private String errorMessage;
+        private com.riceerp.backend.entity.Sale sale;
+        public com.riceerp.backend.entity.Sale getSale() { return sale; }
+        public SyncItemResult withSale(com.riceerp.backend.entity.Sale sale) { this.sale = sale; return this; }
 
         public SyncItemResult() {}
 

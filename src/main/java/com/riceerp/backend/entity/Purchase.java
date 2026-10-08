@@ -32,7 +32,7 @@ public class Purchase {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "total_amount", nullable = false, columnDefinition = "decimal(19,4)")
-    private double totalAmount;
+    private java.math.BigDecimal totalAmount = java.math.BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -73,11 +73,12 @@ public class Purchase {
         this.purchaseDate = purchaseDate;
     }
 
-    public double getTotalAmount() {
+    public java.math.BigDecimal getTotalAmount() {
         return totalAmount;
     }
 
-    public void setTotalAmount(double totalAmount) {
+    public void setTotalAmount(double totalAmount) { this.totalAmount = java.math.BigDecimal.valueOf(totalAmount); }
+    public void setTotalAmount(java.math.BigDecimal totalAmount) {
         this.totalAmount = totalAmount;
     }
 

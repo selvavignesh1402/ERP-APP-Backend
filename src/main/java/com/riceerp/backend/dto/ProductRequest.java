@@ -15,10 +15,14 @@ public class ProductRequest {
     private String unit;
 
     @PositiveOrZero(message = "Purchase price must be zero or greater")
-    private double purchasePrice;
+    @jakarta.validation.constraints.NotNull(message = "Purchase price cannot be null")
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4, message = "Purchase price must have at most 15 integer digits and four decimal places")
+    private java.math.BigDecimal purchasePrice = java.math.BigDecimal.ZERO;
 
     @Positive(message = "Selling price must be greater than zero")
-    private double sellingPrice;
+    @jakarta.validation.constraints.NotNull(message = "Selling price cannot be null")
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4, message = "Selling price must have at most 15 integer digits and four decimal places")
+    private java.math.BigDecimal sellingPrice = java.math.BigDecimal.ZERO;
 
     @PositiveOrZero(message = "Stock must be zero or greater")
     private double stock;
@@ -27,7 +31,7 @@ public class ProductRequest {
     private double minimumStock;
 
     @PositiveOrZero(message = "GST rate must be zero or greater")
-    private double gstRate;
+    private Double gstRate;
 
     private String hsnCode;
 
@@ -63,20 +67,24 @@ public class ProductRequest {
         this.unit = unit;
     }
 
-    public double getPurchasePrice() {
+    public java.math.BigDecimal getPurchasePrice() {
         return purchasePrice;
     }
 
-    public void setPurchasePrice(double purchasePrice) {
-        this.purchasePrice = purchasePrice;
+    public void setPurchasePrice(double purchasePrice) { this.purchasePrice = java.math.BigDecimal.valueOf(purchasePrice); }
+    @com.fasterxml.jackson.annotation.JsonSetter("purchasePrice")
+    public void setPurchasePrice(java.math.BigDecimal purchasePrice) {
+        this.purchasePrice = purchasePrice == null ? null : purchasePrice.stripTrailingZeros();
     }
 
-    public double getSellingPrice() {
+    public java.math.BigDecimal getSellingPrice() {
         return sellingPrice;
     }
 
-    public void setSellingPrice(double sellingPrice) {
-        this.sellingPrice = sellingPrice;
+    public void setSellingPrice(double sellingPrice) { this.sellingPrice = java.math.BigDecimal.valueOf(sellingPrice); }
+    @com.fasterxml.jackson.annotation.JsonSetter("sellingPrice")
+    public void setSellingPrice(java.math.BigDecimal sellingPrice) {
+        this.sellingPrice = sellingPrice == null ? null : sellingPrice.stripTrailingZeros();
     }
 
     public double getStock() {
@@ -95,11 +103,11 @@ public class ProductRequest {
         this.minimumStock = minimumStock;
     }
 
-    public double getGstRate() {
+    public Double getGstRate() {
         return gstRate;
     }
 
-    public void setGstRate(double gstRate) {
+    public void setGstRate(Double gstRate) {
         this.gstRate = gstRate;
     }
 

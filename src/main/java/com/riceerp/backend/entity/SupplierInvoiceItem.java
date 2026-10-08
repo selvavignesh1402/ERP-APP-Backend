@@ -34,11 +34,11 @@ public class SupplierInvoiceItem {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "unit_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double unitPrice;
+    private java.math.BigDecimal unitPrice = java.math.BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "total_amount", nullable = false, columnDefinition = "decimal(19,4)")
-    private double totalAmount;
+    private java.math.BigDecimal totalAmount = java.math.BigDecimal.ZERO;
 
     public Long getId() {
         return id;
@@ -72,20 +72,24 @@ public class SupplierInvoiceItem {
         this.quantity = quantity;
     }
 
-    public double getUnitPrice() {
+    public java.math.BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
+    public void setUnitPrice(java.math.BigDecimal unitPrice) { this.unitPrice = unitPrice; }
+
     public void setUnitPrice(double unitPrice) {
-        this.unitPrice = unitPrice;
+        this.unitPrice = java.math.BigDecimal.valueOf(unitPrice);
     }
 
-    public double getTotalAmount() {
+    public java.math.BigDecimal getTotalAmount() {
         return totalAmount;
     }
 
+    public void setTotalAmount(java.math.BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+
     public void setTotalAmount(double totalAmount) {
-        this.totalAmount = totalAmount;
+        this.totalAmount = java.math.BigDecimal.valueOf(totalAmount);
     }
 
     public Long getOrganizationId() {

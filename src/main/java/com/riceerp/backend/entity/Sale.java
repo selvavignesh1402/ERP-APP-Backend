@@ -6,20 +6,28 @@ import org.hibernate.annotations.TenantId;
 import com.riceerp.backend.enums.PaymentMode;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "sales", uniqueConstraints = @UniqueConstraint(
         name = "uk_sale_org_client_reference", columnNames = {"organization_id", "client_reference_id"}))
 public class Sale {
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tax_type", nullable = false, columnDefinition = "varchar(20) default 'INTRA_STATE'")
+    private com.riceerp.backend.enums.TaxType taxType = com.riceerp.backend.enums.TaxType.INTRA_STATE;
+    public com.riceerp.backend.enums.TaxType getTaxType() { return taxType; }
+    public void setTaxType(com.riceerp.backend.enums.TaxType value) { taxType = value; }
     // Response totals are calculated from persisted sale-linked payments on reads.
     @Transient
-    private Double paidAmount;
+    private BigDecimal paidAmount;
     @Transient
-    private Double balanceDue;
-    public Double getPaidAmount() { return paidAmount; }
-    public void setPaidAmount(Double amount) { paidAmount = amount; }
-    public Double getBalanceDue() { return balanceDue; }
-    public void setBalanceDue(Double amount) { balanceDue = amount; }
+    private BigDecimal balanceDue;
+    public BigDecimal getPaidAmount() { return paidAmount; }
+    public void setPaidAmount(double amount) { paidAmount = BigDecimal.valueOf(amount); }
+    public void setPaidAmount(BigDecimal amount) { paidAmount = amount; }
+    public BigDecimal getBalanceDue() { return balanceDue; }
+    public void setBalanceDue(double amount) { balanceDue = BigDecimal.valueOf(amount); }
+    public void setBalanceDue(BigDecimal amount) { balanceDue = amount; }
 
     @TenantId
     @Column(name = "organization_id")
@@ -48,27 +56,27 @@ public class Sale {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double total = 0.0;
+    private BigDecimal total = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double discount = 0.0;
+    private BigDecimal discount = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double cgst = 0.0;
+    private BigDecimal cgst = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double sgst = 0.0;
+    private BigDecimal sgst = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double igst = 0.0;
+    private BigDecimal igst = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "grand_total", nullable = false, columnDefinition = "decimal(19,4)")
-    private double grandTotal = 0.0;
+    private BigDecimal grandTotal = BigDecimal.ZERO;
 
     @Column(name = "client_reference_id", length = 64)
     private String clientReferenceId;
@@ -144,51 +152,57 @@ public class Sale {
         this.paymentMode = paymentMode;
     }
 
-    public double getTotal() {
+    public BigDecimal getTotal() {
         return total;
     }
 
-    public void setTotal(double total) {
+    public void setTotal(double total) { this.total = BigDecimal.valueOf(total); }
+    public void setTotal(BigDecimal total) {
         this.total = total;
     }
 
-    public double getDiscount() {
+    public BigDecimal getDiscount() {
         return discount;
     }
 
-    public void setDiscount(double discount) {
+    public void setDiscount(double discount) { this.discount = BigDecimal.valueOf(discount); }
+    public void setDiscount(BigDecimal discount) {
         this.discount = discount;
     }
 
-    public double getCgst() {
+    public BigDecimal getCgst() {
         return cgst;
     }
 
-    public void setCgst(double cgst) {
+    public void setCgst(double cgst) { this.cgst = BigDecimal.valueOf(cgst); }
+    public void setCgst(BigDecimal cgst) {
         this.cgst = cgst;
     }
 
-    public double getSgst() {
+    public BigDecimal getSgst() {
         return sgst;
     }
 
-    public void setSgst(double sgst) {
+    public void setSgst(double sgst) { this.sgst = BigDecimal.valueOf(sgst); }
+    public void setSgst(BigDecimal sgst) {
         this.sgst = sgst;
     }
 
-    public double getIgst() {
+    public BigDecimal getIgst() {
         return igst;
     }
 
-    public void setIgst(double igst) {
+    public void setIgst(double igst) { this.igst = BigDecimal.valueOf(igst); }
+    public void setIgst(BigDecimal igst) {
         this.igst = igst;
     }
 
-    public double getGrandTotal() {
+    public BigDecimal getGrandTotal() {
         return grandTotal;
     }
 
-    public void setGrandTotal(double grandTotal) {
+    public void setGrandTotal(double grandTotal) { this.grandTotal = BigDecimal.valueOf(grandTotal); }
+    public void setGrandTotal(BigDecimal grandTotal) {
         this.grandTotal = grandTotal;
     }
 

@@ -19,7 +19,8 @@ public class DefaultPermissionMatrix {
             "invoice:view", "invoice:status",
             "reconciliation:view", "reconciliation:create",
             "inventory:view",
-            "beat-plan:view", "beat-plan:manage",
+            "report:view",
+            "beat-plan:view", "beat-plan:manage", "visit:execute",
             "dashboard:view",
             "member:view", "member:manage"
     );
@@ -48,6 +49,7 @@ public class DefaultPermissionMatrix {
                 "invoice:view", "invoice:status",
                 "reconciliation:view", "reconciliation:create",
                 "inventory:view",
+                "report:view",
                 "beat-plan:view",
                 "dashboard:view",
                 "member:view"
@@ -63,7 +65,8 @@ public class DefaultPermissionMatrix {
                 "delivery:view",
                 "payment:view", "payment:create",
                 "inventory:view",
-                "beat-plan:view",
+                "report:view",
+                "beat-plan:view", "visit:execute",
                 "dashboard:view",
                 "member:view"
         ));

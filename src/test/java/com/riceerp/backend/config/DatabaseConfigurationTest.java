@@ -89,7 +89,7 @@ class DatabaseConfigurationTest {
         var ds = new DriverManagerDataSource("jdbc:h2:mem:migration_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
         var flyway = Flyway.configure().dataSource(ds).locations("classpath:db/migration").cleanDisabled(true).load();
         // V1 baseline, V2 invoice identity snapshots, V3 customer versions, V4 exact decimals.
-        assertEquals(4, flyway.migrate().migrationsExecuted);
+        assertEquals(5, flyway.migrate().migrationsExecuted);
         assertEquals(0, flyway.migrate().migrationsExecuted);
         // Exercise the actual reference-data statements. Later demo transactions use MySQL DATE_SUB,
         // which H2 does not implement; the full demo script still needs a MySQL rehearsal.

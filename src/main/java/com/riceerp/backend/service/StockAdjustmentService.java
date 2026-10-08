@@ -29,14 +29,14 @@ public class StockAdjustmentService {
         this.stockMovementService = stockMovementService;
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public StockAdjustment createAdjustment(StockAdjustmentRequest request) {
-        Product product = productRepository.findById(request.getProductId())
+        Product product = productRepository.findForStockUpdate(request.getProductId())
                 .orElseThrow(() -> new NotFoundException("Product not found with id: " + request.getProductId()));
 
         double newStock = product.getStock() + request.getQuantityChange();
-        if (newStock < 0) {
-            throw new BusinessRuleException("Adjustment would cause negative stock (" + newStock + ") for product: "
+        if (!Double.isFinite(newStock) || newStock < productRepository.reservedQuantity(product.getId())) {
+            throw new BusinessRuleException("Adjustment would consume reserved stock or cause invalid stock (" + newStock + ") for product: "
                     + product.getProductName());
         }
 

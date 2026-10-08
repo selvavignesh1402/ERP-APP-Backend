@@ -12,6 +12,16 @@ import java.util.List;
 
 @Repository
 public interface VisitScheduleRepository extends JpaRepository<VisitSchedule, Long> {
+    List<VisitSchedule> findByBeatPlanIdAndScheduledDateGreaterThanEqual(Long beatPlanId, LocalDate date);
+
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true)
+    @Query("update VisitSchedule v set v.status = com.riceerp.backend.enums.VisitStatus.MISSED " +
+            "where v.organizationId=:orgId and v.scheduledDate < :today and v.status=com.riceerp.backend.enums.VisitStatus.PENDING " +
+            "and not exists (select c.id from VisitCheckIn c where c.visitSchedule.id=v.id)")
+    int expireUnstartedSchedules(@Param("orgId") Long orgId, @Param("today") LocalDate today);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT v FROM VisitSchedule v WHERE v.id = :id AND v.organizationId = :orgId")
+    java.util.Optional<VisitSchedule> findForUpdate(@Param("id") Long id, @Param("orgId") Long orgId);
 
     List<VisitSchedule> findBySalespersonIdAndScheduledDateOrderByVisitOrderAsc(Long salespersonId, LocalDate date);
 

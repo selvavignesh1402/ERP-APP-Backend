@@ -31,7 +31,7 @@ public class SupplierProduct {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "purchase_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double purchasePrice;
+    private java.math.BigDecimal purchasePrice = java.math.BigDecimal.ZERO;
 
     @Column(name = "lead_time_days")
     private Integer leadTimeDays;
@@ -64,11 +64,12 @@ public class SupplierProduct {
         this.product = product;
     }
 
-    public double getPurchasePrice() {
+    public java.math.BigDecimal getPurchasePrice() {
         return purchasePrice;
     }
 
-    public void setPurchasePrice(double purchasePrice) {
+    public void setPurchasePrice(double purchasePrice) { this.purchasePrice = java.math.BigDecimal.valueOf(purchasePrice); }
+    public void setPurchasePrice(java.math.BigDecimal purchasePrice) {
         this.purchasePrice = purchasePrice;
     }
 

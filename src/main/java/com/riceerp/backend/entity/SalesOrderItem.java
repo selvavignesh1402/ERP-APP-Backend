@@ -8,6 +8,11 @@ import jakarta.persistence.*;
 @Entity
 @Table(name = "sales_order_items")
 public class SalesOrderItem {
+    @JdbcTypeCode(SqlTypes.DECIMAL)
+    @Column(name = "gst_rate", columnDefinition = "decimal(7,4) default 5", updatable = false)
+    private Double gstRate;
+    public Double getGstRate() { return gstRate; }
+    public void setGstRate(Double value) { gstRate = value; }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,11 +41,11 @@ public class SalesOrderItem {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "unit_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double unitPrice;
+    private java.math.BigDecimal unitPrice = java.math.BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "total_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double totalPrice;
+    private java.math.BigDecimal totalPrice = java.math.BigDecimal.ZERO;
 
     public Long getId() {
         return id;
@@ -98,19 +103,21 @@ public class SalesOrderItem {
         this.remainingQuantity = remainingQuantity;
     }
 
-    public double getUnitPrice() {
+    public java.math.BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
-    public void setUnitPrice(double unitPrice) {
+    public void setUnitPrice(double unitPrice) { this.unitPrice = java.math.BigDecimal.valueOf(unitPrice); }
+    public void setUnitPrice(java.math.BigDecimal unitPrice) {
         this.unitPrice = unitPrice;
     }
 
-    public double getTotalPrice() {
+    public java.math.BigDecimal getTotalPrice() {
         return totalPrice;
     }
 
-    public void setTotalPrice(double totalPrice) {
+    public void setTotalPrice(double totalPrice) { this.totalPrice = java.math.BigDecimal.valueOf(totalPrice); }
+    public void setTotalPrice(java.math.BigDecimal totalPrice) {
         this.totalPrice = totalPrice;
     }
 }

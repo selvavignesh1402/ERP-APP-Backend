@@ -1,270 +1,273 @@
 package com.riceerp.backend.service;
 
-import com.riceerp.backend.dto.DeliveryConfirmRequest;
-import com.riceerp.backend.dto.DeliveryCreateRequest;
-import com.riceerp.backend.dto.DeliveryFailRequest;
-import com.riceerp.backend.dto.DeliveryItemConfirmRequest;
-import com.riceerp.backend.dto.DeliveryItemCreateRequest;
-import com.riceerp.backend.dto.SaleItemRequest;
-import com.riceerp.backend.entity.Delivery;
-import com.riceerp.backend.entity.DeliveryItem;
-import com.riceerp.backend.entity.Product;
-import com.riceerp.backend.entity.Sale;
-import com.riceerp.backend.entity.SalesOrder;
-import com.riceerp.backend.entity.SalesOrderItem;
-import com.riceerp.backend.entity.User;
-import com.riceerp.backend.enums.DeliveryStatus;
-import com.riceerp.backend.enums.PaymentMode;
-import com.riceerp.backend.enums.SalesOrderStatus;
+import com.riceerp.backend.dto.*;
+import com.riceerp.backend.entity.*;
+import com.riceerp.backend.enums.*;
 import com.riceerp.backend.exception.BusinessRuleException;
 import com.riceerp.backend.exception.NotFoundException;
-import com.riceerp.backend.repository.DeliveryItemRepository;
-import com.riceerp.backend.repository.DeliveryRepository;
-import com.riceerp.backend.repository.ProductRepository;
-import com.riceerp.backend.repository.SalesOrderItemRepository;
-import com.riceerp.backend.repository.SalesOrderRepository;
-import com.riceerp.backend.repository.UserRepository;
+import com.riceerp.backend.repository.*;
+import com.riceerp.backend.security.TenantContext;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class DeliveryService {
-
     private final DeliveryRepository deliveryRepository;
     private final DeliveryItemRepository deliveryItemRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final SalesOrderItemRepository salesOrderItemRepository;
-    private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final SaleService saleService;
+    private final OrganizationRepository organizations;
+    private final SaleRepository invoices;
 
-    public DeliveryService(DeliveryRepository deliveryRepository,
-                           DeliveryItemRepository deliveryItemRepository,
-                           SalesOrderRepository salesOrderRepository,
-                           SalesOrderItemRepository salesOrderItemRepository,
-                           ProductRepository productRepository,
-                           UserRepository userRepository,
-                           SaleService saleService) {
+    public DeliveryService(DeliveryRepository deliveryRepository, DeliveryItemRepository deliveryItemRepository,
+            SalesOrderRepository salesOrderRepository, SalesOrderItemRepository salesOrderItemRepository,
+            ProductRepository productRepository, UserRepository userRepository, SaleService saleService,
+            OrganizationRepository organizations, SaleRepository invoices) {
         this.deliveryRepository = deliveryRepository;
         this.deliveryItemRepository = deliveryItemRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.salesOrderItemRepository = salesOrderItemRepository;
-        this.productRepository = productRepository;
         this.userRepository = userRepository;
         this.saleService = saleService;
+        this.organizations = organizations;
+        this.invoices = invoices;
     }
 
-    @Transactional
+    private Long tenant() {
+        Long id = TenantContext.getCurrentTenant();
+        if (id == null || id <= 0) throw new AccessDeniedException("Select an organization first");
+        return id;
+    }
+
+    // Acquire before loading delivery/order entities. READ_COMMITTED ensures that a
+    // waiting confirmation sees the first transaction's committed terminal status.
+    private void lockMutations() {
+        organizations.lockForDelivery(tenant()).orElseThrow(() -> new NotFoundException("Organization not found"));
+    }
+
+    private boolean active(Delivery delivery) {
+        return delivery.getStatus() == DeliveryStatus.ASSIGNED || delivery.getStatus() == DeliveryStatus.OUT_FOR_DELIVERY;
+    }
+
+    private void assertOpenOrder(SalesOrder order) {
+        if (order.getStatus() == SalesOrderStatus.CANCELLED || order.getStatus() == SalesOrderStatus.DELIVERED)
+            throw new BusinessRuleException("The sales order is already closed.");
+    }
+
+    private Map<Long, SalesOrderItem> orderItems(SalesOrder order) {
+        Map<Long, SalesOrderItem> result = new LinkedHashMap<>();
+        for (SalesOrderItem item : order.getItems()) {
+            if (result.putIfAbsent(item.getProduct().getId(), item) != null)
+                throw new BusinessRuleException("This order has duplicate product lines. Resolve them before dispatching.");
+        }
+        return result;
+    }
+
+    private List<Delivery> siblings(SalesOrder order) {
+        return deliveryRepository.findBySalesOrderIdAndOrganizationId(order.getId(), tenant());
+    }
+
+    private long reserved(List<Delivery> notes, Long productId) {
+        return notes.stream().filter(this::active).flatMap(note -> note.getItems().stream())
+                .filter(item -> item.getProduct().getId().equals(productId))
+                .mapToLong(DeliveryItem::getDeliveringQuantity).sum();
+    }
+
+    // Packed quantity represents fulfilled quantities plus outstanding dispatches.
+    // Closing a partial/failed note releases its undelivered allocation.
+    private void refreshOrder(SalesOrder order, List<Delivery> notes) {
+        for (SalesOrderItem item : order.getItems()) {
+            long packed = item.getDeliveredQuantity() + reserved(notes, item.getProduct().getId());
+            if (packed > item.getOrderedQuantity() || packed < 0)
+                throw new BusinessRuleException("Delivery allocations exceed this order. Reconcile existing delivery notes.");
+            item.setPackedQuantity((int) packed);
+            item.setRemainingQuantity(item.getOrderedQuantity() - item.getDeliveredQuantity());
+            salesOrderItemRepository.save(item);
+        }
+        if (order.getItems().stream().allMatch(item -> item.getRemainingQuantity() == 0)) {
+            order.setStatus(SalesOrderStatus.DELIVERED);
+        } else if (notes.stream().anyMatch(note -> note.getStatus() == DeliveryStatus.OUT_FOR_DELIVERY)) {
+            order.setStatus(SalesOrderStatus.OUT_FOR_DELIVERY);
+        } else if (notes.stream().anyMatch(note -> note.getStatus() == DeliveryStatus.ASSIGNED)) {
+            order.setStatus(SalesOrderStatus.READY_FOR_DELIVERY);
+        } else if (order.getItems().stream().anyMatch(item -> item.getDeliveredQuantity() > 0)) {
+            order.setStatus(SalesOrderStatus.PARTIALLY_DELIVERED);
+        } else {
+            order.setStatus(SalesOrderStatus.CONFIRMED);
+        }
+        order.setUpdatedAt(LocalDateTime.now());
+        salesOrderRepository.save(order);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Delivery createDeliveryNote(DeliveryCreateRequest request) {
-        SalesOrder order = salesOrderRepository.findById(request.getSalesOrderId())
-                .orElseThrow(() -> new NotFoundException("Sales order not found with id: " + request.getSalesOrderId()));
-
-        if (order.getStatus() == SalesOrderStatus.DELIVERED || order.getStatus() == SalesOrderStatus.CANCELLED) {
-            throw new BusinessRuleException("Cannot create delivery note for an order that is " + order.getStatus());
+        lockMutations();
+        SalesOrder order = salesOrderRepository.findByIdAndOrganizationId(request.getSalesOrderId(), tenant())
+                .orElseThrow(() -> new NotFoundException("Sales order not found"));
+        assertOpenOrder(order);
+        if (request.getItems() == null || request.getItems().isEmpty())
+            throw new BusinessRuleException("Specify at least one dispatch item.");
+        Map<Long, SalesOrderItem> ordered = orderItems(order);
+        List<Delivery> notes = new ArrayList<>(siblings(order));
+        Set<Long> seen = new HashSet<>();
+        for (DeliveryItemCreateRequest item : request.getItems()) {
+            if (item == null || item.getProductId() == null || !seen.add(item.getProductId()))
+                throw new BusinessRuleException("Each dispatch product must appear exactly once.");
+            SalesOrderItem line = ordered.get(item.getProductId());
+            if (line == null) throw new BusinessRuleException("Product is not part of the sales order.");
+            long available = (long) line.getOrderedQuantity() - line.getDeliveredQuantity() - reserved(notes, item.getProductId());
+            if (item.getDeliveringQuantity() <= 0 || item.getDeliveringQuantity() > available)
+                throw new BusinessRuleException("Dispatch quantity exceeds unallocated order quantity for " +
+                        line.getProduct().getProductName() + ". Available: " + available);
         }
-
-        User deliveryPerson = null;
-        if (request.getDeliveryPersonId() != null) {
-            deliveryPerson = userRepository.findById(request.getDeliveryPersonId()).orElse(null);
-        }
-
+        User person = request.getDeliveryPersonId() == null ? null : userRepository.findActiveOrganizationUser(request.getDeliveryPersonId(), tenant())
+                .orElseThrow(() -> new NotFoundException("Delivery person not found"));
         Delivery delivery = new Delivery();
-        delivery.setDeliveryNumber("DN-" + System.currentTimeMillis());
+        delivery.setDeliveryNumber("DN-" + UUID.randomUUID());
         delivery.setSalesOrder(order);
-        delivery.setDeliveryPerson(deliveryPerson);
+        delivery.setDeliveryPerson(person);
         delivery.setVehicleNumber(request.getVehicleNumber());
         delivery.setStatus(DeliveryStatus.ASSIGNED);
         delivery.setAssignedAt(LocalDateTime.now());
         delivery.setDeliveryNotes(request.getDeliveryNotes());
-
-        List<DeliveryItem> deliveryItems = new ArrayList<>();
-
-        for (DeliveryItemCreateRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new NotFoundException("Product not found with id: " + itemReq.getProductId()));
-
-            // Find matching SalesOrderItem
-            SalesOrderItem orderItem = order.getItems().stream()
-                    .filter(oi -> oi.getProduct().getId().equals(product.getId()))
-                    .findFirst()
-                    .orElseThrow(() -> new BusinessRuleException("Product " + product.getProductName() + " is not in the sales order"));
-
-            if (itemReq.getDeliveringQuantity() > orderItem.getRemainingQuantity()) {
-                throw new BusinessRuleException("Delivering quantity (" + itemReq.getDeliveringQuantity()
-                        + ") exceeds remaining ordered quantity (" + orderItem.getRemainingQuantity() + ") for " + product.getProductName());
-            }
-
-            DeliveryItem dItem = new DeliveryItem();
-            dItem.setDelivery(delivery);
-            dItem.setProduct(product);
-            dItem.setOrderedQuantity(orderItem.getOrderedQuantity());
-            dItem.setDeliveringQuantity(itemReq.getDeliveringQuantity());
-            dItem.setDeliveredQuantity(0);
-            dItem.setUnitPrice(orderItem.getUnitPrice());
-
-            deliveryItems.add(dItem);
-
-            // Update packed quantity on order item
-            orderItem.setPackedQuantity(orderItem.getPackedQuantity() + itemReq.getDeliveringQuantity());
-            salesOrderItemRepository.save(orderItem);
+        List<DeliveryItem> items = new ArrayList<>();
+        for (DeliveryItemCreateRequest requested : request.getItems()) {
+            SalesOrderItem line = ordered.get(requested.getProductId());
+            DeliveryItem item = new DeliveryItem();
+            item.setDelivery(delivery); item.setProduct(line.getProduct());
+            item.setOrderedQuantity(line.getOrderedQuantity());
+            item.setDeliveringQuantity(requested.getDeliveringQuantity());
+            item.setDeliveredQuantity(0); item.setUnitPrice(line.getUnitPrice());
+            items.add(item);
         }
-
-        delivery.setItems(deliveryItems);
-        order.setStatus(SalesOrderStatus.READY_FOR_DELIVERY);
-        order.setUpdatedAt(LocalDateTime.now());
-        salesOrderRepository.save(order);
-
-        return deliveryRepository.save(delivery);
+        delivery.setItems(items);
+        Delivery saved = deliveryRepository.save(delivery);
+        notes.add(saved);
+        refreshOrder(order, notes);
+        return saved;
     }
 
     public Delivery getDeliveryById(Long id) {
-        return deliveryRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Delivery not found with id: " + id));
+        return deliveryRepository.findByIdAndOrganizationId(id, tenant())
+                .orElseThrow(() -> new NotFoundException("Delivery not found"));
     }
 
     public List<Delivery> listDeliveries(DeliveryStatus status) {
-        if (status != null) {
-            return deliveryRepository.findByStatusOrderByAssignedAtDesc(status);
-        }
-        return deliveryRepository.findAllByOrderByAssignedAtDesc();
+        return status == null ? deliveryRepository.findByOrganizationIdOrderByAssignedAtDesc(tenant())
+                : deliveryRepository.findByStatusAndOrganizationIdOrderByAssignedAtDesc(status, tenant());
     }
 
-    public List<Delivery> getMyDeliveries(Long deliveryPersonId, DeliveryStatus status) {
-        if (status != null) {
-            return deliveryRepository.findByDeliveryPersonIdAndStatusOrderByAssignedAtDesc(deliveryPersonId, status);
-        }
-        return deliveryRepository.findByDeliveryPersonIdOrderByAssignedAtDesc(deliveryPersonId);
+    public List<Delivery> getMyDeliveries(Long userId, DeliveryStatus status) {
+        return status == null ? deliveryRepository.findByDeliveryPersonIdAndOrganizationIdOrderByAssignedAtDesc(userId, tenant())
+                : deliveryRepository.findByDeliveryPersonIdAndStatusAndOrganizationIdOrderByAssignedAtDesc(userId, status, tenant());
     }
 
-    private void assertDeliveryAccess(Delivery delivery, Long userId, boolean isPrivileged) {
-        if (isPrivileged) {
-            return;
-        }
-        if (delivery.getDeliveryPerson() != null && !delivery.getDeliveryPerson().getId().equals(userId)) {
-            throw new BusinessRuleException("You are not authorized to modify this delivery. It is assigned to another agent.");
-        }
+    private void assertDeliveryAccess(Delivery delivery, Long userId, boolean privileged) {
+        if (!privileged && (delivery.getDeliveryPerson() == null || !Objects.equals(delivery.getDeliveryPerson().getId(), userId)))
+            throw new AccessDeniedException("This delivery is not assigned to you.");
     }
 
-    @Transactional
-    public Delivery startDelivery(Long deliveryId, Long userId, boolean isPrivileged) {
-        Delivery delivery = getDeliveryById(deliveryId);
-        assertDeliveryAccess(delivery, userId, isPrivileged);
-
-        if (delivery.getStatus() != DeliveryStatus.ASSIGNED) {
-            throw new BusinessRuleException("Delivery has already been started or closed.");
-        }
-
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Delivery startDelivery(Long id, Long userId, boolean privileged) {
+        lockMutations();
+        Delivery delivery = getDeliveryById(id);
+        assertDeliveryAccess(delivery, userId, privileged);
+        assertOpenOrder(delivery.getSalesOrder());
+        if (delivery.getStatus() != DeliveryStatus.ASSIGNED)
+            throw new BusinessRuleException("Only an assigned delivery can be started.");
         delivery.setStatus(DeliveryStatus.OUT_FOR_DELIVERY);
         delivery.setStartedAt(LocalDateTime.now());
-
-        SalesOrder order = delivery.getSalesOrder();
-        order.setStatus(SalesOrderStatus.OUT_FOR_DELIVERY);
-        order.setUpdatedAt(LocalDateTime.now());
-        salesOrderRepository.save(order);
-
+        refreshOrder(delivery.getSalesOrder(), siblings(delivery.getSalesOrder()));
         return deliveryRepository.save(delivery);
     }
 
-    @Transactional
-    public Delivery confirmDelivery(Long deliveryId, DeliveryConfirmRequest request, Long userId, boolean isPrivileged) {
-        Delivery delivery = getDeliveryById(deliveryId);
-        assertDeliveryAccess(delivery, userId, isPrivileged);
-
-        if (delivery.getStatus() == DeliveryStatus.DELIVERED) {
-            throw new BusinessRuleException("Delivery has already been finalized and invoiced.");
-        }
-
-        delivery.setDeliveredAt(LocalDateTime.now());
-        delivery.setReceiverName(request.getReceiverName());
-        delivery.setReceiverPhone(request.getReceiverPhone());
-        if (request.getDeliveryNotes() != null) {
-            delivery.setDeliveryNotes(request.getDeliveryNotes());
-        }
-
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Delivery confirmDelivery(Long id, DeliveryConfirmRequest request, Long userId, boolean privileged) {
+        lockMutations();
+        Delivery delivery = getDeliveryById(id);
+        assertDeliveryAccess(delivery, userId, privileged);
+        if (delivery.getStatus() != DeliveryStatus.OUT_FOR_DELIVERY || delivery.getGeneratedInvoiceId() != null)
+            throw new BusinessRuleException("Only an in-transit delivery can be confirmed once. Dispatch remaining goods on a new delivery note.");
         SalesOrder order = delivery.getSalesOrder();
+        assertOpenOrder(order);
+        Map<Long, SalesOrderItem> ordered = orderItems(order);
+        if (request.getItems() == null || request.getItems().isEmpty() ||
+                request.getReceiverName() == null || request.getReceiverName().isBlank())
+            throw new BusinessRuleException("Receiver name and all delivered quantities are required.");
+        Map<Long, Integer> quantities = new LinkedHashMap<>();
+        for (DeliveryItemConfirmRequest item : request.getItems()) {
+            if (item == null || item.getProductId() == null || item.getDeliveredQuantity() < 0 ||
+                    quantities.putIfAbsent(item.getProductId(), item.getDeliveredQuantity()) != null)
+                throw new BusinessRuleException("Provide each delivery product once with a non-negative quantity.");
+        }
+        Set<Long> noteProducts = new HashSet<>();
+        for (DeliveryItem item : delivery.getItems()) {
+            Long productId = item.getProduct().getId();
+            Integer actual = quantities.get(productId);
+            SalesOrderItem line = ordered.get(productId);
+            if (!noteProducts.add(productId) || actual == null || line == null)
+                throw new BusinessRuleException("Confirm every dispatched product explicitly, including zero for undelivered goods.");
+            if (actual > item.getDeliveringQuantity() || actual > (long) line.getOrderedQuantity() - line.getDeliveredQuantity())
+                throw new BusinessRuleException("Delivered quantity exceeds the dispatch or remaining order quantity.");
+        }
+        if (!noteProducts.equals(quantities.keySet()) || noteProducts.isEmpty())
+            throw new BusinessRuleException("Confirmation contains products outside this delivery.");
+
+        // Validation is complete before any quantity, proof or invoice is changed.
         List<SaleItemRequest> invoiceItems = new ArrayList<>();
-        boolean isPartialDelivery = false;
-
-        for (DeliveryItemConfirmRequest confItem : request.getItems()) {
-            DeliveryItem dItem = delivery.getItems().stream()
-                    .filter(di -> di.getProduct().getId().equals(confItem.getProductId()))
-                    .findFirst()
-                    .orElseThrow(() -> new BusinessRuleException("Item not found in delivery note: " + confItem.getProductId()));
-
-            int actualDelivered = confItem.getDeliveredQuantity();
-            if (actualDelivered < dItem.getDeliveringQuantity()) {
-                isPartialDelivery = true;
-            }
-
-            dItem.setDeliveredQuantity(actualDelivered);
-            deliveryItemRepository.save(dItem);
-
-            // Update corresponding SalesOrderItem
-            SalesOrderItem orderItem = order.getItems().stream()
-                    .filter(oi -> oi.getProduct().getId().equals(confItem.getProductId()))
-                    .findFirst()
-                    .orElseThrow(() -> new BusinessRuleException("Product not found in sales order"));
-
-            orderItem.setDeliveredQuantity(orderItem.getDeliveredQuantity() + actualDelivered);
-            orderItem.setRemainingQuantity(Math.max(0, orderItem.getOrderedQuantity() - orderItem.getDeliveredQuantity()));
-            salesOrderItemRepository.save(orderItem);
-
-            // Add to invoice if delivered > 0
-            if (actualDelivered > 0) {
-                SaleItemRequest sItem = new SaleItemRequest();
-                sItem.setProductId(dItem.getProduct().getId());
-                sItem.setQuantity(actualDelivered);
-                sItem.setPrice(dItem.getUnitPrice());
-                invoiceItems.add(sItem);
+        boolean partial = false;
+        for (DeliveryItem item : delivery.getItems()) {
+            int actual = quantities.get(item.getProduct().getId());
+            partial |= actual < item.getDeliveringQuantity();
+            item.setDeliveredQuantity(actual);
+            deliveryItemRepository.save(item);
+            SalesOrderItem line = ordered.get(item.getProduct().getId());
+            line.setDeliveredQuantity(line.getDeliveredQuantity() + actual);
+            if (actual > 0) {
+                SaleItemRequest invoice = new SaleItemRequest();
+                invoice.setProductId(item.getProduct().getId()); invoice.setQuantity(actual); invoice.setPrice(item.getUnitPrice());
+                invoiceItems.add(invoice);
             }
         }
-
-        delivery.setStatus(isPartialDelivery ? DeliveryStatus.PARTIALLY_DELIVERED : DeliveryStatus.DELIVERED);
-
-        // Check if overall sales order is complete
-        boolean allItemsFulfilled = order.getItems().stream().allMatch(oi -> oi.getRemainingQuantity() == 0);
-        order.setStatus(allItemsFulfilled ? SalesOrderStatus.DELIVERED : SalesOrderStatus.PARTIALLY_DELIVERED);
-        order.setUpdatedAt(LocalDateTime.now());
-        salesOrderRepository.save(order);
-
-        // 🧾 Automatically Generate Invoice for Actual Delivered Goods
+        delivery.setStatus(partial ? DeliveryStatus.PARTIALLY_DELIVERED : DeliveryStatus.DELIVERED);
+        delivery.setDeliveredAt(LocalDateTime.now());
+        delivery.setReceiverName(request.getReceiverName()); delivery.setReceiverPhone(request.getReceiverPhone());
+        if (request.getDeliveryNotes() != null) delivery.setDeliveryNotes(request.getDeliveryNotes());
+        refreshOrder(order, siblings(order));
+        // Flush delivered quantities before the native reservation query in invoice creation.
+        salesOrderRepository.flush();
         if (!invoiceItems.isEmpty()) {
-            PaymentMode pMode = request.getPaymentMode() != null ? request.getPaymentMode() : PaymentMode.CREDIT;
-            Sale generatedSale = saleService.createSaleFromDelivery(
-                    delivery.getId(),
-                    order.getId(),
-                    order.getCustomer(),
-                    invoiceItems,
-                    pMode,
-                    0.0
-            );
-            delivery.setGeneratedInvoiceId(generatedSale.getId());
+            java.math.BigDecimal discount = OrderBilling.discountFor(order, invoiceItems,
+                    invoices.findBySalesOrderIdAndOrganizationId(order.getId(), tenant()));
+            var gstSnapshots = new java.util.HashMap<Long, Double>();
+            for (var item : order.getItems()) gstSnapshots.put(item.getProduct().getId(), item.getGstRate());
+            Sale sale = saleService.createSaleFromDelivery(id, order.getId(), order.getCustomer(), invoiceItems,
+                    request.getPaymentMode() == null ? PaymentMode.CREDIT : request.getPaymentMode(), discount,
+                    order.getTaxType(), gstSnapshots);
+            delivery.setGeneratedInvoiceId(sale.getId());
         }
-
         return deliveryRepository.save(delivery);
     }
 
-    @Transactional
-    public Delivery markDeliveryFailed(Long deliveryId, DeliveryFailRequest request, Long userId, boolean isPrivileged) {
-        Delivery delivery = getDeliveryById(deliveryId);
-        assertDeliveryAccess(delivery, userId, isPrivileged);
-
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Delivery markDeliveryFailed(Long id, DeliveryFailRequest request, Long userId, boolean privileged) {
+        lockMutations();
+        Delivery delivery = getDeliveryById(id);
+        assertDeliveryAccess(delivery, userId, privileged);
+        assertOpenOrder(delivery.getSalesOrder());
+        if (!active(delivery) || delivery.getGeneratedInvoiceId() != null)
+            throw new BusinessRuleException("A closed delivery cannot be marked as failed.");
+        if (request.getFailureReason() == null) throw new BusinessRuleException("Failure reason is required.");
         delivery.setStatus(DeliveryStatus.FAILED);
         delivery.setFailureReason(request.getFailureReason());
-        if (request.getDeliveryNotes() != null) {
-            delivery.setDeliveryNotes(request.getDeliveryNotes());
-        }
-
-        SalesOrder order = delivery.getSalesOrder();
-        // Revert sales order status back to READY_FOR_DELIVERY so it can be rescheduled or reassigned
-        order.setStatus(SalesOrderStatus.READY_FOR_DELIVERY);
-        order.setUpdatedAt(LocalDateTime.now());
-        salesOrderRepository.save(order);
-
+        if (request.getDeliveryNotes() != null) delivery.setDeliveryNotes(request.getDeliveryNotes());
+        refreshOrder(delivery.getSalesOrder(), siblings(delivery.getSalesOrder()));
         return deliveryRepository.save(delivery);
     }
 }

@@ -10,6 +10,16 @@ import java.util.Optional;
 
 @Repository
 public interface VisitCheckInRepository extends JpaRepository<VisitCheckIn, Long> {
+    @org.springframework.data.jpa.repository.Query("SELECT v.visitSchedule.id FROM VisitCheckIn v WHERE v.id = :id AND v.organizationId = :orgId")
+    Optional<Long> findScheduleIdForCheckOut(
+            @org.springframework.data.repository.query.Param("id") Long id,
+            @org.springframework.data.repository.query.Param("orgId") Long orgId);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("SELECT v FROM VisitCheckIn v WHERE v.visitSchedule.id = :scheduleId AND v.organizationId = :orgId")
+    Optional<VisitCheckIn> findForUpdateBySchedule(
+            @org.springframework.data.repository.query.Param("scheduleId") Long scheduleId,
+            @org.springframework.data.repository.query.Param("orgId") Long orgId);
 
     Optional<VisitCheckIn> findByVisitScheduleId(Long scheduleId);
 

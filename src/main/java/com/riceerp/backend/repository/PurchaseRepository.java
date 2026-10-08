@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface PurchaseRepository extends JpaRepository<Purchase, Long> {
+    java.util.Optional<Purchase> findByIdAndOrganizationId(Long id, Long organizationId);
     List<Purchase> findBySupplierId(Long supplierId);
 
     List<Purchase> findByInvoiceNumberContainingIgnoreCase(String invoiceNumber);

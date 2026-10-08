@@ -9,10 +9,16 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "sales_orders")
 public class SalesOrder {
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tax_type", nullable = false, columnDefinition = "varchar(20) default 'INTRA_STATE'")
+    private com.riceerp.backend.enums.TaxType taxType = com.riceerp.backend.enums.TaxType.INTRA_STATE;
+    public com.riceerp.backend.enums.TaxType getTaxType() { return taxType; }
+    public void setTaxType(com.riceerp.backend.enums.TaxType value) { taxType = value; }
     @Version
     @Column(nullable = false, columnDefinition = "bigint default 0")
     private Long version = 0L;
@@ -48,19 +54,19 @@ public class SalesOrder {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double subtotal = 0.0;
+    private BigDecimal subtotal = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double discount = 0.0;
+    private BigDecimal discount = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(nullable = false, columnDefinition = "decimal(19,4)")
-    private double taxAmount = 0.0;
+    private BigDecimal taxAmount = BigDecimal.ZERO;
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "grand_total", nullable = false, columnDefinition = "decimal(19,4)")
-    private double grandTotal = 0.0;
+    private BigDecimal grandTotal = BigDecimal.ZERO;
 
     @Column(length = 500)
     private String notes;
@@ -130,35 +136,39 @@ public class SalesOrder {
         this.status = status;
     }
 
-    public double getSubtotal() {
+    public BigDecimal getSubtotal() {
         return subtotal;
     }
 
-    public void setSubtotal(double subtotal) {
+    public void setSubtotal(double subtotal) { this.subtotal = BigDecimal.valueOf(subtotal); }
+    public void setSubtotal(BigDecimal subtotal) {
         this.subtotal = subtotal;
     }
 
-    public double getDiscount() {
+    public BigDecimal getDiscount() {
         return discount;
     }
 
-    public void setDiscount(double discount) {
+    public void setDiscount(double discount) { this.discount = BigDecimal.valueOf(discount); }
+    public void setDiscount(BigDecimal discount) {
         this.discount = discount;
     }
 
-    public double getTaxAmount() {
+    public BigDecimal getTaxAmount() {
         return taxAmount;
     }
 
-    public void setTaxAmount(double taxAmount) {
+    public void setTaxAmount(double taxAmount) { this.taxAmount = BigDecimal.valueOf(taxAmount); }
+    public void setTaxAmount(BigDecimal taxAmount) {
         this.taxAmount = taxAmount;
     }
 
-    public double getGrandTotal() {
+    public BigDecimal getGrandTotal() {
         return grandTotal;
     }
 
-    public void setGrandTotal(double grandTotal) {
+    public void setGrandTotal(double grandTotal) { this.grandTotal = BigDecimal.valueOf(grandTotal); }
+    public void setGrandTotal(BigDecimal grandTotal) {
         this.grandTotal = grandTotal;
     }
 

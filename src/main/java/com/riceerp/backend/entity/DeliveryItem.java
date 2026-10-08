@@ -33,7 +33,7 @@ public class DeliveryItem {
 
     @JdbcTypeCode(SqlTypes.DECIMAL)
     @Column(name = "unit_price", nullable = false, columnDefinition = "decimal(19,4)")
-    private double unitPrice;
+    private java.math.BigDecimal unitPrice = java.math.BigDecimal.ZERO;
 
     public Long getId() {
         return id;
@@ -83,11 +83,12 @@ public class DeliveryItem {
         this.deliveredQuantity = deliveredQuantity;
     }
 
-    public double getUnitPrice() {
+    public java.math.BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
-    public void setUnitPrice(double unitPrice) {
+    public void setUnitPrice(double unitPrice) { this.unitPrice = java.math.BigDecimal.valueOf(unitPrice); }
+    public void setUnitPrice(java.math.BigDecimal unitPrice) {
         this.unitPrice = unitPrice;
     }
 }

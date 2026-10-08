@@ -58,11 +58,32 @@ public class GlobalExceptionHandler {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<Map<String, String>> handleAuthentication(org.springframework.security.core.AuthenticationException ex) {
+        return status(HttpStatus.UNAUTHORIZED, "Invalid credentials or inactive account");
+    }
+
+    @ExceptionHandler(org.springframework.dao.PessimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, String>> handleLockConflict(org.springframework.dao.PessimisticLockingFailureException ex) {
+        return status(HttpStatus.CONFLICT, "Concurrent update conflict detected. Please refresh and retry.");
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
         // Full details stay in server logs; the client gets a safe message.
         log.error("Unhandled application error", ex);
-        return status(HttpStatus.BAD_REQUEST, ex.getMessage() != null ? ex.getMessage() : "Request failed");
+        return status(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred. Please try again.");
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleIntegrity(org.springframework.dao.DataIntegrityViolationException ex) {
+        log.warn("Database constraint conflict", ex);
+        return status(HttpStatus.CONFLICT, "This change conflicts with an existing record. Refresh and check before retrying.");
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleMalformedBody(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        return status(HttpStatus.BAD_REQUEST, "Invalid request body");
     }
 
     @ExceptionHandler(Exception.class)
@@ -74,6 +95,7 @@ public class GlobalExceptionHandler {
     private ResponseEntity<Map<String, String>> status(HttpStatus httpStatus, String message) {
         Map<String, String> error = new HashMap<>();
         error.put("message", message);
+        error.put("code", httpStatus.name());
         return ResponseEntity.status(httpStatus).body(error);
     }
 }

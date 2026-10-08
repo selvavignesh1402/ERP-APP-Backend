@@ -1,4 +1,5 @@
 package com.riceerp.backend.dto;
+import java.math.BigDecimal;
 
 import java.util.List;
 
@@ -14,8 +15,8 @@ public class ManagerDashboardDto {
         private long completed;
         private long missed;
         private long pending;
-        private double totalOrders;
-        private double totalCollections;
+        private BigDecimal totalOrders = BigDecimal.ZERO;
+        private BigDecimal totalCollections = BigDecimal.ZERO;
 
         public Long getSalespersonId() {
             return salespersonId;
@@ -65,19 +66,19 @@ public class ManagerDashboardDto {
             this.pending = pending;
         }
 
-        public double getTotalOrders() {
+        public BigDecimal getTotalOrders() {
             return totalOrders;
         }
 
-        public void setTotalOrders(double totalOrders) {
+        public void setTotalOrders(BigDecimal totalOrders) {
             this.totalOrders = totalOrders;
         }
 
-        public double getTotalCollections() {
+        public BigDecimal getTotalCollections() {
             return totalCollections;
         }
 
-        public void setTotalCollections(double totalCollections) {
+        public void setTotalCollections(BigDecimal totalCollections) {
             this.totalCollections = totalCollections;
         }
     }

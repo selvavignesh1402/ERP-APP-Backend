@@ -3,7 +3,7 @@ package com.riceerp.backend.dto;
 public class SupplierOptionResponse {
     private Long supplierId;
     private String supplierName;
-    private double purchasePrice;
+    private java.math.BigDecimal purchasePrice = java.math.BigDecimal.ZERO;
     private Integer leadTimeDays;
     private double minOrderQty;
 
@@ -23,11 +23,12 @@ public class SupplierOptionResponse {
         this.supplierName = supplierName;
     }
 
-    public double getPurchasePrice() {
+    public java.math.BigDecimal getPurchasePrice() {
         return purchasePrice;
     }
 
-    public void setPurchasePrice(double purchasePrice) {
+    public void setPurchasePrice(double purchasePrice) { this.purchasePrice = java.math.BigDecimal.valueOf(purchasePrice); }
+    public void setPurchasePrice(java.math.BigDecimal purchasePrice) {
         this.purchasePrice = purchasePrice;
     }
 

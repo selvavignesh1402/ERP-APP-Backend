@@ -1,5 +1,7 @@
 package com.riceerp.backend.controller;
 
+import com.riceerp.backend.dto.*;
+
 import com.riceerp.backend.dto.CheckInRequestDto;
 import com.riceerp.backend.dto.CheckOutRequestDto;
 import com.riceerp.backend.entity.VisitCheckIn;
@@ -13,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/visits")
+@RequestMapping({"/api/visits", "/visits"})
 public class VisitController {
 
     private final VisitService visitService;
@@ -24,36 +26,37 @@ public class VisitController {
 
     // Salesperson: Check-in at a shop
     @PostMapping("/{scheduleId}/check-in")
-    @PreAuthorize("hasAuthority('beat-plan:view')")
-    public ResponseEntity<VisitCheckIn> checkIn(
+    @PreAuthorize("hasAuthority('visit:execute')")
+    public ResponseEntity<VisitCheckInResponse> checkIn(
             @PathVariable Long scheduleId,
             @Valid @RequestBody CheckInRequestDto dto,
             Authentication auth) {
         Long salespersonId = getCurrentUserId(auth);
-        return ResponseEntity.ok(visitService.checkIn(scheduleId, salespersonId, dto));
+        return ResponseEntity.ok(VisitCheckInResponse.from(visitService.checkIn(scheduleId, salespersonId, dto)));
     }
 
     // Salesperson: Complete visit (check-out with outcome)
     @PutMapping("/{checkInId}/check-out")
-    @PreAuthorize("hasAuthority('beat-plan:view')")
-    public ResponseEntity<VisitCheckIn> checkOut(
+    @PreAuthorize("hasAuthority('visit:execute')")
+    public ResponseEntity<VisitCheckInResponse> checkOut(
             @PathVariable Long checkInId,
-            @Valid @RequestBody CheckOutRequestDto dto) {
-        return ResponseEntity.ok(visitService.checkOut(checkInId, dto));
+            @Valid @RequestBody CheckOutRequestDto dto,
+            Authentication auth) {
+        return ResponseEntity.ok(VisitCheckInResponse.from(visitService.checkOut(checkInId, getCurrentUserId(auth), dto)));
     }
 
     // Visit history for a customer
     @GetMapping("/customer/{customerId}/history")
     @PreAuthorize("hasAuthority('beat-plan:view') or hasAuthority('customer:view')")
-    public ResponseEntity<List<VisitCheckIn>> getVisitHistory(@PathVariable Long customerId) {
-        return ResponseEntity.ok(visitService.getVisitHistory(customerId));
+    public ResponseEntity<List<VisitCheckInResponse>> getVisitHistory(@PathVariable Long customerId) {
+        return ResponseEntity.ok(visitService.getVisitHistory(customerId).stream().map(VisitCheckInResponse::from).toList());
     }
 
     // History for a salesperson
     @GetMapping("/salesperson/{salespersonId}/history")
     @PreAuthorize("hasAuthority('beat-plan:view') or hasAuthority('beat-plan:manage')")
-    public ResponseEntity<List<VisitCheckIn>> getSalespersonHistory(@PathVariable Long salespersonId) {
-        return ResponseEntity.ok(visitService.getSalespersonHistory(salespersonId));
+    public ResponseEntity<List<VisitCheckInResponse>> getSalespersonHistory(@PathVariable Long salespersonId) {
+        return ResponseEntity.ok(visitService.getSalespersonHistory(salespersonId).stream().map(VisitCheckInResponse::from).toList());
     }
 
     private Long getCurrentUserId(Authentication auth) {

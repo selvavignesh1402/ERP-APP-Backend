@@ -6,10 +6,12 @@ import com.riceerp.backend.entity.*;
 import com.riceerp.backend.enums.MovementType;
 import com.riceerp.backend.enums.PurchaseStatus;
 import com.riceerp.backend.repository.*;
+import com.riceerp.backend.exception.BusinessRuleException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,7 @@ public class GoodsReceiptService {
     private final PurchaseItemRepository purchaseItemRepository;
     private final ProductRepository productRepository;
     private final StockMovementService stockMovementService;
+    private final ProcurementLock procurementLock;
 
     public GoodsReceiptService(
             GoodsReceiptRepository goodsReceiptRepository,
@@ -30,43 +33,62 @@ public class GoodsReceiptService {
             PurchaseRepository purchaseRepository,
             PurchaseItemRepository purchaseItemRepository,
             ProductRepository productRepository,
-            StockMovementService stockMovementService) {
+            StockMovementService stockMovementService, ProcurementLock procurementLock) {
         this.goodsReceiptRepository = goodsReceiptRepository;
         this.goodsReceiptItemRepository = goodsReceiptItemRepository;
         this.purchaseRepository = purchaseRepository;
         this.purchaseItemRepository = purchaseItemRepository;
         this.productRepository = productRepository;
         this.stockMovementService = stockMovementService;
+        this.procurementLock = procurementLock;
     }
 
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public GoodsReceipt createReceipt(Long purchaseId, GoodsReceiptRequest request) {
-        Purchase purchase = purchaseRepository.findById(purchaseId)
-                .orElseThrow(() -> new RuntimeException("Purchase not found with id: " + purchaseId));
+        Long orgId = procurementLock.acquire();
+        Purchase purchase = purchaseRepository.findByIdAndOrganizationId(purchaseId, orgId)
+                .orElseThrow(() -> new com.riceerp.backend.exception.NotFoundException("Purchase not found with id: " + purchaseId));
 
         if (purchase.getStatus() != PurchaseStatus.ORDERED
                 && purchase.getStatus() != PurchaseStatus.PARTIALLY_RECEIVED) {
-            throw new RuntimeException("Goods can only be received when the purchase is ORDERED or PARTIALLY_RECEIVED. "
+            throw new BusinessRuleException("Goods can only be received when the purchase is ORDERED or PARTIALLY_RECEIVED. "
                     + "Current status: " + purchase.getStatus());
         }
 
         if (request.getItems() == null || request.getItems().isEmpty()) {
-            throw new RuntimeException("Receipt must contain at least one item.");
+            throw new BusinessRuleException("Receipt must contain at least one item.");
         }
 
         List<PurchaseItem> purchaseItems = purchaseItemRepository.findByPurchaseId(purchaseId);
-        Map<Long, PurchaseItem> orderedByProduct = new HashMap<>();
+        Map<Long, BigDecimal> orderedByProduct = PurchaseQuantities.ordered(purchaseItems);
+        Map<Long, PurchaseItem> productLines = new HashMap<>();
         for (PurchaseItem poItem : purchaseItems) {
-            orderedByProduct.put(poItem.getProduct().getId(), poItem);
+            productLines.putIfAbsent(poItem.getProduct().getId(), poItem);
         }
 
-        // Cumulative received quantity per product across all prior receipts
-        Map<Long, Double> receivedSoFar = new HashMap<>();
-        for (GoodsReceipt existing : goodsReceiptRepository.findByPurchaseId(purchaseId)) {
-            for (GoodsReceiptItem existingItem : goodsReceiptItemRepository.findByReceiptId(existing.getId())) {
-                Long pid = existingItem.getProduct().getId();
-                receivedSoFar.merge(pid, existingItem.getReceivedQty(), Double::sum);
-            }
+        Map<Long, BigDecimal> receivedSoFar = receivedQuantities(purchaseId);
+        Map<Long, BigDecimal> receivedNow = new HashMap<>();
+        // Validate the complete receipt before any writes, including repeated products.
+        for (GoodsReceiptItemRequest item : request.getItems()) {
+            if (item == null || !orderedByProduct.containsKey(item.getProductId()))
+                throw new BusinessRuleException("Each receipt item must specify a product from this purchase.");
+            receivedNow.merge(item.getProductId(), PurchaseQuantities.positive(item.getReceivedQty()), BigDecimal::add);
+            BigDecimal price = item.getUnitPrice();
+            if (price == null || price.signum() < 0 || price.compareTo(new BigDecimal("999999999999999.9999")) > 0
+                    || price.stripTrailingZeros().scale() > 4)
+                throw new BusinessRuleException("Receipt price must be non-negative, within the supported range, and have at most four decimal places.");
+            if (price.signum() == 0 && productLines.get(item.getProductId()).getPrice() == null)
+                throw new BusinessRuleException("Purchase price is missing. Specify a receipt price.");
+        }
+        for (var entry : receivedNow.entrySet()) {
+            Long productId = entry.getKey();
+            BigDecimal cumulative = receivedSoFar.getOrDefault(productId, BigDecimal.ZERO).add(entry.getValue());
+            if (cumulative.compareTo(orderedByProduct.get(productId)) > 0)
+                throw new BusinessRuleException("Over-receiving not allowed for product "
+                        + productLines.get(productId).getProduct().getProductName() + ". Ordered: "
+                        + orderedByProduct.get(productId) + ", Total received including this receipt: " + cumulative);
+            PurchaseQuantities.stored(PurchaseQuantities.nonNegative(productLines.get(productId).getProduct().getStock()).add(entry.getValue()));
+            receivedSoFar.put(productId, cumulative);
         }
 
         GoodsReceipt receipt = new GoodsReceipt();
@@ -78,54 +100,28 @@ public class GoodsReceiptService {
         GoodsReceipt savedReceipt = goodsReceiptRepository.save(receipt);
 
         for (GoodsReceiptItemRequest itemReq : request.getItems()) {
-            PurchaseItem poItem = orderedByProduct.get(itemReq.getProductId());
-            if (poItem == null) {
-                throw new RuntimeException("Product id " + itemReq.getProductId()
-                        + " is not part of this purchase.");
-            }
-
-            double ordered = poItem.getQuantity();
-            double receivedNow = itemReq.getReceivedQty();
-            if (receivedNow <= 0) {
-                throw new RuntimeException("Received quantity must be greater than zero for product "
-                        + poItem.getProduct().getProductName());
-            }
-
-            double cumulative = receivedSoFar.getOrDefault(itemReq.getProductId(), 0.0);
-            if (cumulative + receivedNow > ordered) {
-                throw new RuntimeException("Over-receiving not allowed for product "
-                        + poItem.getProduct().getProductName() + ". Ordered: " + ordered
-                        + ", Already received: " + cumulative + ", Attempting: " + receivedNow);
-            }
-
+            PurchaseItem poItem = productLines.get(itemReq.getProductId());
             GoodsReceiptItem item = new GoodsReceiptItem();
             item.setReceipt(savedReceipt);
             item.setProduct(poItem.getProduct());
-            item.setOrderedQty(ordered);
-            item.setReceivedQty(receivedNow);
-            item.setUnitPrice(itemReq.getUnitPrice() > 0 ? itemReq.getUnitPrice() : poItem.getPrice());
+            item.setOrderedQty(PurchaseQuantities.stored(orderedByProduct.get(itemReq.getProductId())));
+            item.setReceivedQty(itemReq.getReceivedQty());
+            item.setUnitPrice(itemReq.getUnitPrice().signum() > 0 ? itemReq.getUnitPrice() : poItem.getPrice());
             goodsReceiptItemRepository.save(item);
 
-            // Inventory increases only on goods receipt
-            Product product = poItem.getProduct();
-            product.setStock(product.getStock() + receivedNow);
+        }
+
+        // One inventory update and movement for the total received for each product.
+        for (var entry : receivedNow.entrySet()) {
+            Product product = productLines.get(entry.getKey()).getProduct();
+            product.setStock(PurchaseQuantities.stored(PurchaseQuantities.nonNegative(product.getStock()).add(entry.getValue())));
             productRepository.save(product);
-
-            // Stock movement ledger
-            stockMovementService.record(product, MovementType.PURCHASE_RECEIPT, receivedNow, savedReceipt.getId());
-
-            receivedSoFar.merge(itemReq.getProductId(), receivedNow, Double::sum);
+            stockMovementService.record(product, MovementType.PURCHASE_RECEIPT, PurchaseQuantities.stored(entry.getValue()), savedReceipt.getId());
         }
 
         // Recompute purchase status based on aggregate receiving
-        boolean allReceived = true;
-        for (PurchaseItem poItem : purchaseItems) {
-            double cumulative = receivedSoFar.getOrDefault(poItem.getProduct().getId(), 0.0);
-            if (cumulative < poItem.getQuantity()) {
-                allReceived = false;
-                break;
-            }
-        }
+        boolean allReceived = orderedByProduct.entrySet().stream().allMatch(entry ->
+                receivedSoFar.getOrDefault(entry.getKey(), BigDecimal.ZERO).compareTo(entry.getValue()) == 0);
         purchase.setStatus(allReceived ? PurchaseStatus.RECEIVED : PurchaseStatus.PARTIALLY_RECEIVED);
         purchaseRepository.save(purchase);
 
@@ -138,7 +134,7 @@ public class GoodsReceiptService {
 
     public GoodsReceipt getReceiptById(Long receiptId) {
         return goodsReceiptRepository.findById(receiptId)
-                .orElseThrow(() -> new RuntimeException("Goods receipt not found with id: " + receiptId));
+                .orElseThrow(() -> new com.riceerp.backend.exception.NotFoundException("Goods receipt not found with id: " + receiptId));
     }
 
     public List<GoodsReceiptItem> getReceiptItems(Long receiptId) {
@@ -146,10 +142,16 @@ public class GoodsReceiptService {
     }
 
     public Map<Long, Double> getReceivedQuantities(Long purchaseId) {
-        Map<Long, Double> receivedSoFar = new HashMap<>();
+        Map<Long, Double> quantities = new HashMap<>();
+        receivedQuantities(purchaseId).forEach((id, quantity) -> quantities.put(id, PurchaseQuantities.stored(quantity)));
+        return quantities;
+    }
+
+    private Map<Long, BigDecimal> receivedQuantities(Long purchaseId) {
+        Map<Long, BigDecimal> receivedSoFar = new HashMap<>();
         for (GoodsReceipt existing : goodsReceiptRepository.findByPurchaseId(purchaseId)) {
             for (GoodsReceiptItem existingItem : goodsReceiptItemRepository.findByReceiptId(existing.getId())) {
-                receivedSoFar.merge(existingItem.getProduct().getId(), existingItem.getReceivedQty(), Double::sum);
+                receivedSoFar.merge(existingItem.getProduct().getId(), PurchaseQuantities.positive(existingItem.getReceivedQty()), BigDecimal::add);
             }
         }
         return receivedSoFar;

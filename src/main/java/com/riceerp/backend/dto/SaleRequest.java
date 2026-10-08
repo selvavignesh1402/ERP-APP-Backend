@@ -7,17 +7,31 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 public class SaleRequest {
+    private com.riceerp.backend.enums.TaxType taxType = com.riceerp.backend.enums.TaxType.INTRA_STATE;
+    public com.riceerp.backend.enums.TaxType getTaxType() { return taxType; }
+    public void setTaxType(com.riceerp.backend.enums.TaxType value) { taxType = value; }
     private String customerName;
     private Long customerId;
 
     @NotBlank(message = "Payment mode is required")
     private String paymentMode;
+    @PositiveOrZero(message = "Paid amount must be zero or greater")
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 2, message = "Paid amount must have at most 15 integer digits and two decimal places")
+    private BigDecimal paidAmount;
+    private String initialPaymentMode;
+
+    public BigDecimal getPaidAmount() { return paidAmount; }
+    public void setPaidAmount(BigDecimal paidAmount) { this.paidAmount = paidAmount == null ? null : paidAmount.stripTrailingZeros(); }
+    public String getInitialPaymentMode() { return initialPaymentMode; }
+    public void setInitialPaymentMode(String mode) { this.initialPaymentMode = mode; }
 
     @NotNull(message = "Discount is required")
     @PositiveOrZero(message = "Discount must be zero or greater")
-    private double discount;
+    @jakarta.validation.constraints.Digits(integer = 15, fraction = 4, message = "Discount must have at most 15 integer digits and four decimal places")
+    private BigDecimal discount = BigDecimal.ZERO;
 
     @NotEmpty(message = "Sale must contain at least one item")
     @Valid
@@ -47,12 +61,12 @@ public class SaleRequest {
         this.paymentMode = paymentMode;
     }
 
-    public double getDiscount() {
+    public BigDecimal getDiscount() {
         return discount;
     }
 
-    public void setDiscount(double discount) {
-        this.discount = discount;
+    public void setDiscount(BigDecimal discount) {
+        this.discount = discount == null ? null : discount.stripTrailingZeros();
     }
 
     public List<SaleItemRequest> getItems() {

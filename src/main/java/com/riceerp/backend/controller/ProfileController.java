@@ -1,6 +1,7 @@
 package com.riceerp.backend.controller;
 
 import com.riceerp.backend.dto.UpdateProfileRequest;
+import com.riceerp.backend.dto.UserProfileResponse;
 import com.riceerp.backend.entity.User;
 import com.riceerp.backend.entity.UserProfile;
 import com.riceerp.backend.exception.NotFoundException;
@@ -31,12 +32,12 @@ public class ProfileController {
     // The user id always comes from the JWT principal — never from the request path.
 
     @GetMapping
-    public UserProfile getProfile(Authentication authentication) {
+    public UserProfileResponse getProfile(Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
-        return profileRepository.findById(userId)
-                .orElse(null);
+        return profileRepository.findById(userId).map(UserProfileResponse::from).orElse(null);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @PutMapping
     public Map<String, String> updateProfile(
             Authentication authentication,
@@ -44,7 +45,7 @@ public class ProfileController {
 
         Long userId = getCurrentUserId(authentication);
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findForUpdate(userId)
                 .orElseThrow(() -> new NotFoundException("User not found"));
 
         UserProfile profile = profileRepository.findById(userId)
